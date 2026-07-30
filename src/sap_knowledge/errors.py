@@ -23,3 +23,7 @@ class UnsafeContinuationUrlError(SapKnowledgeError):
 
 class InvalidMetadataError(SapKnowledgeError):
     """Raised when an EDMX metadata document cannot be interpreted."""
+
+
+class RecipeValidationError(SapKnowledgeError):
+    """Raised when a source record does not satisfy its knowledge recipe."""
