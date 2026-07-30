@@ -24,6 +24,8 @@ The package stops before the final target on purpose. Its output is portable,
 so an application can choose OpenAI, a local embedding model, pgvector,
 Qdrant, SAP HANA Cloud, or another store without changing SAP extraction.
 
+The optional Qdrant integration now provides the first end-to-end local target.
+
 ## Current milestone
 
 The first milestone provides the protocol layer required by the later knowledge
@@ -234,6 +236,66 @@ sap-knowledge --config sap-knowledge.toml checkpoint
 `--reveal-cursors` is available for careful local debugging. Avoid copying its
 output into logs or issue reports. You can also run the CLI as
 `python -m sap_knowledge`.
+
+## Local vector search and RAG context
+
+Install the optional local embedding and Qdrant dependencies:
+
+```console
+python -m pip install "sap-knowledge-pipeline[fastembed]"
+```
+
+For a source checkout:
+
+```console
+python -m pip install -e ".[fastembed]"
+```
+
+The sandbox example config includes a persistent local Qdrant index and the
+small English BGE embedding model:
+
+```toml
+[vector]
+path = "data/qdrant-business-partners"
+collection = "sap_business_partners"
+model = "BAAI/bge-small-en-v1.5"
+model_cache_path = "state/embedding-models"
+batch_size = 128
+```
+
+After `sync` has produced the JSONL events, embed and index them:
+
+```console
+sap-knowledge --config sap-business-partner-sandbox.example.toml index
+```
+
+Run semantic retrieval:
+
+```console
+sap-knowledge --config sap-business-partner-sandbox.example.toml search \
+  "industrial manufacturing and engineering company" --limit 3
+```
+
+Results contain the score, source text, document and chunk IDs, and the
+original SAP entity set and business key. To create a grounded prompt that can
+be sent to any chat model:
+
+```console
+sap-knowledge --config sap-business-partner-sandbox.example.toml prompt \
+  "Which business partners manufacture industrial components?" --limit 5
+```
+
+The prompt requires numbered citations, tells the model to use only retrieved
+sources, and treats SAP text as untrusted data rather than instructions. Prompt
+construction does not call an LLM or send SAP data to a third party.
+
+The collection records its embedding model and vector dimension. Search and
+index operations fail explicitly if configuration changes, preventing vectors
+from incompatible embedding spaces from being mixed silently.
+
+Qdrant local mode is intended for development and smaller indexes. The adapter
+uses the same Qdrant collection operations needed for a server or cloud target,
+but remote connection configuration and production hardening are future work.
 
 ## Live compatibility smoke test
 

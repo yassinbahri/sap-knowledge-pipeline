@@ -11,3 +11,10 @@ events_path = "data/sandbox-business-partner-events.jsonl"
 checkpoint_path = "state/sandbox-business-partner.json"
 max_characters = 1200
 overlap_characters = 120
+
+[vector]
+path = "data/qdrant-business-partners"
+collection = "sap_business_partners"
+model = "BAAI/bge-small-en-v1.5"
+model_cache_path = "state/embedding-models"
+batch_size = 128

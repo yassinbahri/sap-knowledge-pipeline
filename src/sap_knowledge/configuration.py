@@ -105,6 +105,26 @@ class PipelineSettings(BaseModel):
         )
 
 
+class VectorSettings(BaseModel):
+    """Local embedding model and persistent Qdrant settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: Path = Path("data/qdrant")
+    collection: str = Field(default="sap_business_partners", min_length=1)
+    model: str = Field(default="BAAI/bge-small-en-v1.5", min_length=1)
+    model_cache_path: Path = Path("state/embedding-models")
+    batch_size: int = Field(default=128, gt=0, le=1000)
+
+    def resolved(self, base_directory: Path) -> VectorSettings:
+        return self.model_copy(
+            update={
+                "path": _resolve_path(base_directory, self.path),
+                "model_cache_path": _resolve_path(base_directory, self.model_cache_path),
+            }
+        )
+
+
 class AppConfig(BaseModel):
     """Complete CLI configuration."""
 
@@ -112,6 +132,7 @@ class AppConfig(BaseModel):
 
     service: ServiceSettings
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
+    vector: VectorSettings | None = None
 
 
 def _required_environment(name: str) -> str:
@@ -144,4 +165,9 @@ def load_config(path: str | Path) -> AppConfig:
         )
         raise ConfigurationError(f"invalid configuration {config_path}: {details}") from exc
 
-    return config.model_copy(update={"pipeline": config.pipeline.resolved(config_path.parent)})
+    return config.model_copy(
+        update={
+            "pipeline": config.pipeline.resolved(config_path.parent),
+            "vector": config.vector.resolved(config_path.parent) if config.vector else None,
+        }
+    )

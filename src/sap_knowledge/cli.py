@@ -7,17 +7,27 @@ import asyncio
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import httpx
+from pydantic import TypeAdapter, ValidationError
 
 from sap_knowledge import __version__
 from sap_knowledge.configuration import AppConfig, load_config
 from sap_knowledge.errors import RecipeValidationError, SapKnowledgeError
+from sap_knowledge.integrations.fastembed import FastEmbedder
+from sap_knowledge.integrations.qdrant import QdrantKnowledgeIndex
 from sap_knowledge.knowledge.recipes import KnowledgeRecipe
 from sap_knowledge.sources.odata import ODataClient
 from sap_knowledge.sources.odata.metadata import ServiceMetadata
-from sap_knowledge.sync import FileCheckpointStore, JsonlEventSink, ODataKnowledgePipeline
+from sap_knowledge.sync import (
+    FileCheckpointStore,
+    JsonlEventSink,
+    ODataKnowledgePipeline,
+    SyncEvent,
+)
+from sap_knowledge.vector import build_rag_prompt
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -50,6 +60,21 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print sensitive continuation and delta URLs",
     )
+
+    index = commands.add_parser("index", help="Embed JSONL events into local Qdrant")
+    index.add_argument(
+        "--events",
+        type=Path,
+        help="Override the configured JSONL event path",
+    )
+
+    search = commands.add_parser("search", help="Search the local vector index")
+    search.add_argument("query", help="Natural-language retrieval query")
+    search.add_argument("--limit", type=int, default=5, help="Maximum results (default: 5)")
+
+    prompt = commands.add_parser("prompt", help="Build a grounded prompt from vector results")
+    prompt.add_argument("query", help="Question to retrieve context for")
+    prompt.add_argument("--limit", type=int, default=5, help="Maximum sources (default: 5)")
     return parser
 
 
@@ -161,6 +186,84 @@ def _checkpoint(config: AppConfig, *, reveal_cursors: bool) -> None:
     print(json.dumps(data, indent=2))
 
 
+def _vector_index(config: AppConfig) -> QdrantKnowledgeIndex:
+    if config.vector is None:
+        raise RecipeValidationError("configuration does not define a [vector] section")
+    embedder = FastEmbedder(
+        config.vector.model,
+        cache_dir=str(config.vector.model_cache_path),
+    )
+    return QdrantKnowledgeIndex.local(
+        path=str(config.vector.path),
+        collection_name=config.vector.collection,
+        embedder=embedder,
+        batch_size=config.vector.batch_size,
+    )
+
+
+async def _index(config: AppConfig, *, events_path: Path | None) -> None:
+    path = events_path.resolve() if events_path else config.pipeline.events_path
+    adapter: TypeAdapter[SyncEvent] = TypeAdapter(SyncEvent)
+    index = _vector_index(config)
+    indexed_events = indexed_upserts = indexed_deletions = 0
+    batch: list[SyncEvent] = []
+    try:
+        with path.open("rb") as file:
+            for line_number, line in enumerate(file, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    event = adapter.validate_json(line)
+                except ValidationError as exc:
+                    raise RecipeValidationError(
+                        f"invalid sync event at {path}:{line_number}"
+                    ) from exc
+                batch.append(event)
+                if len(batch) >= index.batch_size:
+                    await index.write(batch)
+                    indexed_events += len(batch)
+                    indexed_upserts += sum(event.operation == "upsert" for event in batch)
+                    indexed_deletions += sum(event.operation == "delete" for event in batch)
+                    batch.clear()
+            if batch:
+                await index.write(batch)
+                indexed_events += len(batch)
+                indexed_upserts += sum(event.operation == "upsert" for event in batch)
+                indexed_deletions += sum(event.operation == "delete" for event in batch)
+    except OSError as exc:
+        raise RecipeValidationError(f"cannot read sync events {path}") from exc
+    finally:
+        index.close()
+    print(
+        json.dumps(
+            {
+                "events": indexed_events,
+                "upserts": indexed_upserts,
+                "deletions": indexed_deletions,
+            },
+            indent=2,
+        )
+    )
+
+
+def _search(config: AppConfig, *, query: str, limit: int) -> None:
+    index = _vector_index(config)
+    try:
+        hits = index.search(query, limit=limit)
+    finally:
+        index.close()
+    print(json.dumps([hit.model_dump(mode="json") for hit in hits], indent=2))
+
+
+def _prompt(config: AppConfig, *, query: str, limit: int) -> None:
+    index = _vector_index(config)
+    try:
+        hits = index.search(query, limit=limit)
+    finally:
+        index.close()
+    print(build_rag_prompt(query, hits))
+
+
 def run_cli(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return a process exit status."""
 
@@ -171,8 +274,14 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
             asyncio.run(_inspect(config, entity_set=arguments.entity_set, as_json=arguments.json))
         elif arguments.command == "sync":
             asyncio.run(_sync(config, force_full=arguments.force_full))
-        else:
+        elif arguments.command == "checkpoint":
             _checkpoint(config, reveal_cursors=arguments.reveal_cursors)
+        elif arguments.command == "index":
+            asyncio.run(_index(config, events_path=arguments.events))
+        elif arguments.command == "search":
+            _search(config, query=arguments.query, limit=arguments.limit)
+        else:
+            _prompt(config, query=arguments.query, limit=arguments.limit)
     except (SapKnowledgeError, httpx.HTTPError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

@@ -35,3 +35,11 @@ class CheckpointError(SapKnowledgeError):
 
 class ConfigurationError(SapKnowledgeError):
     """Raised when CLI configuration is missing, invalid, or unsafe."""
+
+
+class OptionalDependencyError(SapKnowledgeError):
+    """Raised when a requested integration dependency is not installed."""
+
+
+class VectorIndexError(SapKnowledgeError):
+    """Raised when embeddings or vector-index state violate their contract."""

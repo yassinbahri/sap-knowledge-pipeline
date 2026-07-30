@@ -23,6 +23,10 @@ events_path = "data/events.jsonl"
 checkpoint_path = "state/checkpoint.json"
 max_characters = 800
 overlap_characters = 80
+
+[vector]
+path = "data/qdrant"
+model_cache_path = "state/models"
 """.strip(),
         encoding="utf-8",
     )
@@ -33,6 +37,9 @@ overlap_characters = 80
     assert config.pipeline.events_path == path.parent / "data" / "events.jsonl"
     assert config.pipeline.checkpoint_path == path.parent / "state" / "checkpoint.json"
     assert config.pipeline.chunker().max_characters == 800
+    assert config.vector is not None
+    assert config.vector.path == path.parent / "data" / "qdrant"
+    assert config.vector.model_cache_path == path.parent / "state" / "models"
 
 
 @pytest.mark.parametrize(
