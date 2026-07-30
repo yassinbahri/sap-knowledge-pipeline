@@ -31,3 +31,7 @@ class RecipeValidationError(SapKnowledgeError):
 
 class CheckpointError(SapKnowledgeError):
     """Raised when durable synchronization state is invalid or incompatible."""
+
+
+class ConfigurationError(SapKnowledgeError):
+    """Raised when CLI configuration is missing, invalid, or unsafe."""

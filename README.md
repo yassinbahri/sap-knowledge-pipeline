@@ -157,6 +157,67 @@ Every chunk includes:
 Stable IDs let a later sink upsert changed chunks without duplicating them.
 The structured citation lets a RAG application show where an answer came from.
 
+## Command-line usage
+
+Copy the supplied configuration template and edit the service URL:
+
+```console
+cp sap-knowledge.example.toml sap-knowledge.toml
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item sap-knowledge.example.toml sap-knowledge.toml
+$env:SAP_USER = "your-technical-user"
+$env:SAP_PASSWORD = "your-password"
+```
+
+The TOML file contains environment-variable **names**, never passwords or
+tokens:
+
+```toml
+[service]
+root = "https://your-sap-host.example/sap/opu/odata/sap/API_BUSINESS_PARTNER/"
+version = "2"
+username_env = "SAP_USER"
+password_env = "SAP_PASSWORD"
+
+[pipeline]
+recipe = "business_partner"
+events_path = "data/business-partner-events.jsonl"
+checkpoint_path = "state/business-partner.json"
+max_characters = 1200
+overlap_characters = 120
+```
+
+Inspect the service before extracting data:
+
+```console
+sap-knowledge --config sap-knowledge.toml inspect
+sap-knowledge --config sap-knowledge.toml inspect --entity-set A_BusinessPartner --json
+```
+
+Run or resume synchronization:
+
+```console
+sap-knowledge --config sap-knowledge.toml sync
+```
+
+The CLI validates the built-in recipe against live EDMX metadata before it
+requests business data. It fails early when an entity set, key, or selected
+property is unavailable.
+
+Inspect checkpoint status without revealing its URLs:
+
+```console
+sap-knowledge --config sap-knowledge.toml checkpoint
+```
+
+`--reveal-cursors` is available for careful local debugging. Avoid copying its
+output into logs or issue reports. You can also run the CLI as
+`python -m sap_knowledge`.
+
 ## Durable synchronization to JSONL
 
 `ODataKnowledgePipeline` combines extraction, rendering, chunking, deletion

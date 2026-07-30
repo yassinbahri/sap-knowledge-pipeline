@@ -1,0 +1,13 @@
+[service]
+root = "https://sap.example.test/sap/opu/odata/sap/API_BUSINESS_PARTNER/"
+version = "2"
+username_env = "SAP_USER"
+password_env = "SAP_PASSWORD"
+timeout_seconds = 30
+
+[pipeline]
+recipe = "business_partner"
+events_path = "data/business-partner-events.jsonl"
+checkpoint_path = "state/business-partner.json"
+max_characters = 1200
+overlap_characters = 120

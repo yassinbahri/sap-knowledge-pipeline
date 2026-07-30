@@ -30,6 +30,9 @@ dependencies = [
   "pydantic>=2.11,<3",
 ]
 
+[project.scripts]
+sap-knowledge = "sap_knowledge.cli:main"
+
 [dependency-groups]
 dev = [
   "lxml-stubs>=0.5",
