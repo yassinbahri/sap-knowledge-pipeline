@@ -28,6 +28,8 @@ class ServiceSettings(BaseModel):
     username_env: str | None = None
     password_env: str | None = None
     bearer_token_env: str | None = None
+    api_key_env: str | None = None
+    api_key_header: str = "APIKey"
     timeout_seconds: float = Field(default=30, gt=0, le=300)
 
     @model_validator(mode="after")
@@ -41,8 +43,13 @@ class ServiceSettings(BaseModel):
         basic_values = (self.username_env, self.password_env)
         if any(basic_values) and not all(basic_values):
             raise ValueError("username_env and password_env must be configured together")
-        if self.bearer_token_env and any(basic_values):
-            raise ValueError("configure either Basic authentication or a bearer token, not both")
+        configured_schemes = sum(
+            (bool(self.username_env), bool(self.bearer_token_env), bool(self.api_key_env))
+        )
+        if configured_schemes > 1:
+            raise ValueError("configure only one of Basic, bearer-token, or API-key authentication")
+        if any(character in self.api_key_header for character in "\r\n:"):
+            raise ValueError("api_key_header is not a valid HTTP header name")
         return self
 
     def authentication(self) -> httpx.Auth | None:
@@ -53,9 +60,11 @@ class ServiceSettings(BaseModel):
         return httpx.BasicAuth(username, password)
 
     def headers(self) -> dict[str, str]:
-        if not self.bearer_token_env:
-            return {}
-        return {"Authorization": f"Bearer {_required_environment(self.bearer_token_env)}"}
+        if self.bearer_token_env:
+            return {"Authorization": f"Bearer {_required_environment(self.bearer_token_env)}"}
+        if self.api_key_env:
+            return {self.api_key_header: _required_environment(self.api_key_env)}
+        return {}
 
 
 class PipelineSettings(BaseModel):
@@ -126,7 +135,13 @@ def load_config(path: str | Path) -> AppConfig:
         config = AppConfig.model_validate(raw)
     except OSError as exc:
         raise ConfigurationError(f"cannot read configuration {config_path}") from exc
-    except (tomllib.TOMLDecodeError, ValidationError) as exc:
+    except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"invalid configuration {config_path}: {exc}") from exc
+    except ValidationError as exc:
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors(include_input=False)
+        )
+        raise ConfigurationError(f"invalid configuration {config_path}: {details}") from exc
 
     return config.model_copy(update={"pipeline": config.pipeline.resolved(config_path.parent)})

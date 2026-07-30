@@ -38,7 +38,7 @@ overlap_characters = 80
 @pytest.mark.parametrize(
     "invalid_line, message",
     [
-        ('password = "never-store-this"', "extra_forbidden"),
+        ('password = "never-store-this"', "Extra inputs are not permitted"),
         ('root = "http://sap.example.test/odata/"', "absolute HTTPS"),
     ],
 )
@@ -64,8 +64,9 @@ version = "4"
         encoding="utf-8",
     )
 
-    with pytest.raises(ConfigurationError, match=message):
+    with pytest.raises(ConfigurationError, match=message) as captured:
         load_config(path)
+    assert "never-store-this" not in str(captured.value)
 
 
 def test_config_rejects_invalid_chunk_overlap(tmp_path: Path) -> None:
@@ -112,3 +113,26 @@ password_env = "TEST_SAP_PASSWORD"
     monkeypatch.setenv("TEST_SAP_USER", "user")
     monkeypatch.setenv("TEST_SAP_PASSWORD", "secret")
     assert config.service.authentication() is not None
+
+
+def test_api_key_is_loaded_into_named_header(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "sap-knowledge.toml"
+    path.write_text(
+        """
+[service]
+root = "https://sandbox.api.sap.com/s4hanacloud/"
+version = "2"
+api_key_env = "TEST_SAP_API_KEY"
+api_key_header = "APIKey"
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TEST_SAP_API_KEY", "secret-api-key")
+
+    config = load_config(path)
+
+    assert config.service.authentication() is None
+    assert config.service.headers() == {"APIKey": "secret-api-key"}

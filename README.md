@@ -191,6 +191,23 @@ max_characters = 1200
 overlap_characters = 120
 ```
 
+SAP Business Accelerator Hub sandboxes use an API key instead of Basic
+authentication. Copy `sap-business-partner-sandbox.example.toml`, obtain your
+personal key from SAP, and set it only in the process environment:
+
+```powershell
+$env:SAP_API_KEY = "your-personal-sandbox-key"
+sap-knowledge --config sap-business-partner-sandbox.example.toml inspect
+sap-knowledge --config sap-business-partner-sandbox.example.toml sync
+```
+
+The corresponding configuration uses:
+
+```toml
+api_key_env = "SAP_API_KEY"
+api_key_header = "APIKey"
+```
+
 Inspect the service before extracting data:
 
 ```console
@@ -217,6 +234,21 @@ sap-knowledge --config sap-knowledge.toml checkpoint
 `--reveal-cursors` is available for careful local debugging. Avoid copying its
 output into logs or issue reports. You can also run the CLI as
 `python -m sap_knowledge`.
+
+## Live compatibility smoke test
+
+The regular test suite is fully offline. An opt-in example checks real public
+services without retaining their data:
+
+```console
+python examples/live_odata_smoke.py
+```
+
+It inspects the public SAP Business Accelerator Hub catalog metadata, then runs
+the complete temporary JSONL/checkpoint pipeline against the OData reference
+Northwind V2 and TripPin V4 services. Network availability and those external
+services are outside this project's control, so this is deliberately not part
+of CI.
 
 ## Durable synchronization to JSONL
 
