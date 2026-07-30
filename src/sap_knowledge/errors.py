@@ -27,3 +27,7 @@ class InvalidMetadataError(SapKnowledgeError):
 
 class RecipeValidationError(SapKnowledgeError):
     """Raised when a source record does not satisfy its knowledge recipe."""
+
+
+class CheckpointError(SapKnowledgeError):
+    """Raised when durable synchronization state is invalid or incompatible."""

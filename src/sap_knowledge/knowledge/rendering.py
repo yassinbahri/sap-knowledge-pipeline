@@ -33,7 +33,9 @@ def _is_empty(value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
-def _document_id(entity_set: str, key: Mapping[str, Any]) -> str:
+def document_id_for(entity_set: str, key: Mapping[str, Any]) -> str:
+    """Build a stable, opaque document ID from an entity set and business key."""
+
     canonical_key = json.dumps(key, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(f"{entity_set}\0{canonical_key}".encode()).hexdigest()[:24]
     return f"{entity_set}:{digest}"
@@ -87,7 +89,7 @@ class KnowledgeRenderer:
             etag=record.etag,
         )
         return KnowledgeDocument(
-            id=_document_id(record.entity_set, record.key),
+            id=document_id_for(record.entity_set, record.key),
             recipe=recipe.name,
             title=title,
             text=text,

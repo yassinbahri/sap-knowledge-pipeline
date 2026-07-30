@@ -157,6 +157,65 @@ Every chunk includes:
 Stable IDs let a later sink upsert changed chunks without duplicating them.
 The structured citation lets a RAG application show where an answer came from.
 
+## Durable synchronization to JSONL
+
+`ODataKnowledgePipeline` combines extraction, rendering, chunking, deletion
+events, and checkpoints. JSONL is the first portable sink: it is easy to
+inspect, replay, import into another system, or use as the input to a custom
+embedding worker.
+
+```python
+from pathlib import Path
+
+from sap_knowledge.sync import (
+    FileCheckpointStore,
+    JsonlEventSink,
+    ODataKnowledgePipeline,
+)
+
+pipeline = ODataKnowledgePipeline(
+    source=source,
+    recipe=BUSINESS_PARTNER,
+    sink=JsonlEventSink(Path("data/business-partner-events.jsonl")),
+    checkpoints=FileCheckpointStore(Path("state/business-partner.json")),
+)
+
+result = await pipeline.run()
+print(result.model_dump())
+```
+
+The first run reads the complete entity set. The checkpoint records each next
+link only after that page's events have been flushed to disk. A later call:
+
+- Resumes an interrupted pagination cursor.
+- Uses the saved delta link when the OData service provides one.
+- Emits `delete` events for V4 removed entities.
+- Returns immediately when a snapshot is complete and has no delta link.
+
+Pass `force_full=True` to intentionally start a new complete snapshot:
+
+```python
+await pipeline.run(force_full=True)
+```
+
+Upserts contain the complete chunk set for a document. A downstream adapter
+should replace all chunks with the same `document_id`; deletes should remove
+all of them.
+
+> [!NOTE]
+> Synchronization is intentionally **at least once**. If event output succeeds
+> but checkpoint persistence fails, the page is replayed. Consumers must upsert
+> by stable IDs. Use only one writer per JSONL/checkpoint pair.
+
+> [!WARNING]
+> OData continuation and delta URLs may contain opaque access state. Protect the
+> checkpoint directory like a credential, never commit it, and do not expose it
+> in logs.
+
+Use a separate checkpoint file for every sink. Recipe and chunker settings are
+fingerprinted; changing either one requires `force_full=True`, which prevents a
+new transformation configuration from being applied only to later changes.
+
 ### Defining a custom recipe
 
 ```python

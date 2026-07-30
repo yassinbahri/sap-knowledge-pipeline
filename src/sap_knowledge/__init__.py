@@ -8,6 +8,7 @@ from sap_knowledge.knowledge import (
     KnowledgeDocument,
     KnowledgeRecipe,
     KnowledgeRenderer,
+    document_id_for,
 )
 from sap_knowledge.models import SourceDeletion, SourcePage, SourceRecord
 
@@ -22,6 +23,7 @@ __all__ = [
     "SourceDeletion",
     "SourcePage",
     "SourceRecord",
+    "document_id_for",
 ]
 
 __version__ = "0.1.0a1"
