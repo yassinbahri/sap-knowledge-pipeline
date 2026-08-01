@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title description">
+  <title id="title">SAP Knowledge Pipeline architecture</title>
+  <desc id="description">SAP OData and HANA sources pass through secure extraction, canonical records, an explicit field allow-list, citation-ready documents, deterministic chunks, and a chosen RAG target.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071b24"/>
+      <stop offset="1" stop-color="#0c2530"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#5bd6c8"/>
+    </marker>
+    <style>
+      .heading { font: 700 25px system-ui, sans-serif; fill: #f5fbff; }
+      .label { font: 650 16px system-ui, sans-serif; fill: #f5fbff; }
+      .detail { font: 400 13px system-ui, sans-serif; fill: #a9c6d1; }
+      .box { fill: #102f3b; stroke: #2c6f7c; stroke-width: 2; rx: 14; }
+      .accent { fill: #103c3a; stroke: #36b9ab; }
+      .line { fill: none; stroke: #5bd6c8; stroke-width: 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="360" rx="24" fill="url(#background)"/>
+  <text x="48" y="52" class="heading">From SAP records to trustworthy RAG context</text>
+
+  <rect x="48" y="91" width="155" height="72" class="box"/>
+  <text x="126" y="120" text-anchor="middle" class="label">SAP OData</text>
+  <text x="126" y="143" text-anchor="middle" class="detail">V2 or V4</text>
+  <rect x="48" y="197" width="155" height="72" class="box"/>
+  <text x="126" y="226" text-anchor="middle" class="label">SAP HANA</text>
+  <text x="126" y="249" text-anchor="middle" class="detail">approved SELECT</text>
+
+  <path d="M203 127H236C255 127 255 180 274 180H294" class="line"/>
+  <path d="M203 233H236C255 233 255 180 274 180H294" class="line"/>
+
+  <rect x="296" y="144" width="158" height="72" class="box accent"/>
+  <text x="375" y="173" text-anchor="middle" class="label">Secure source</text>
+  <text x="375" y="196" text-anchor="middle" class="detail">TLS · read only · paged</text>
+  <path d="M454 180H492" class="line"/>
+
+  <rect x="494" y="144" width="158" height="72" class="box"/>
+  <text x="573" y="173" text-anchor="middle" class="label">Canonical record</text>
+  <text x="573" y="196" text-anchor="middle" class="detail">stable identity + source</text>
+  <path d="M652 180H690" class="line"/>
+
+  <rect x="692" y="144" width="158" height="72" class="box accent"/>
+  <text x="771" y="173" text-anchor="middle" class="label">Allow-list</text>
+  <text x="771" y="196" text-anchor="middle" class="detail">explicit safe fields</text>
+  <path d="M850 180H888" class="line"/>
+
+  <rect x="890" y="91" width="160" height="72" class="box"/>
+  <text x="970" y="120" text-anchor="middle" class="label">Knowledge document</text>
+  <text x="970" y="143" text-anchor="middle" class="detail">citation-ready</text>
+  <path d="M970 163V197" class="line"/>
+  <rect x="890" y="199" width="160" height="72" class="box"/>
+  <text x="970" y="228" text-anchor="middle" class="label">Stable chunks</text>
+  <text x="970" y="251" text-anchor="middle" class="detail">deterministic IDs</text>
+  <path d="M1050 235H1084" class="line"/>
+
+  <rect x="1086" y="199" width="82" height="72" class="box accent"/>
+  <text x="1127" y="228" text-anchor="middle" class="label">RAG</text>
+  <text x="1127" y="251" text-anchor="middle" class="detail">your stack</text>
+
+  <text x="48" y="322" class="detail">The library prepares governed knowledge. It does not send records to an LLM automatically.</text>
+</svg>

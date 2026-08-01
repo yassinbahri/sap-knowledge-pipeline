@@ -46,16 +46,9 @@ version, test recipes against non-production data first, and review the
 
 ## How it fits together
 
-```mermaid
-flowchart LR
-    ODATA["SAP OData V2 or V4"] --> SOURCE["Secure source client"]
-    HANA["SAP HANA SELECT"] --> SOURCE
-    SOURCE --> RECORD["Canonical source records"]
-    RECORD --> RECIPE["Explicit field allow-list"]
-    RECIPE --> DOC["Citation-ready documents"]
-    DOC --> CHUNK["Deterministic chunks"]
-    CHUNK --> TARGET["Your embedder or vector store"]
-```
+![Architecture: SAP OData and HANA flow through secure extraction, explicit field selection, citation-ready documents, deterministic chunks, and finally a user-selected RAG target.](docs/assets/architecture.svg)
+
+See the [project roadmap](ROADMAP.md) for planned releases and contribution opportunities.
 
 The package's synchronization events are portable, so an application can
 choose OpenAI, a local embedding model, pgvector, Qdrant, SAP HANA Cloud, or
