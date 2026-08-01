@@ -5,8 +5,8 @@
 **Turn selected SAP OData and HANA business records into secure,
 citation-ready knowledge for RAG.**
 
-[![PyPI](https://img.shields.io/pypi/v/sap-knowledge-pipeline?label=PyPI&color=0ea5a8)](https://pypi.org/project/sap-knowledge-pipeline/)
-[![Python](https://img.shields.io/pypi/pyversions/sap-knowledge-pipeline?label=Python)](https://pypi.org/project/sap-knowledge-pipeline/)
+[![PyPI](https://img.shields.io/pypi/v/sap-knowledge-pipeline.svg?label=PyPI&color=0ea5a8&cacheSeconds=300)](https://pypi.org/project/sap-knowledge-pipeline/)
+[![Python](https://img.shields.io/pypi/pyversions/sap-knowledge-pipeline.svg?label=Python&cacheSeconds=300)](https://pypi.org/project/sap-knowledge-pipeline/)
 [![CI](https://github.com/yassinbahri/sap-knowledge-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/yassinbahri/sap-knowledge-pipeline/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/yassinbahri/sap-knowledge-pipeline)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-f59e0b)](CHANGELOG.md)
