@@ -12,6 +12,7 @@ class SourceRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    source_type: str = "odata"
     entity_set: str
     key: dict[str, Any]
     data: dict[str, Any]

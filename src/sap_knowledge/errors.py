@@ -43,3 +43,7 @@ class OptionalDependencyError(SapKnowledgeError):
 
 class VectorIndexError(SapKnowledgeError):
     """Raised when embeddings or vector-index state violate their contract."""
+
+
+class HanaQueryError(SapKnowledgeError):
+    """Raised when a HANA query or result cannot satisfy its source contract."""

@@ -33,12 +33,22 @@ def _is_empty(value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
-def document_id_for(entity_set: str, key: Mapping[str, Any]) -> str:
+def document_id_for(
+    entity_set: str,
+    key: Mapping[str, Any],
+    *,
+    source_type: str = "odata",
+) -> str:
     """Build a stable, opaque document ID from an entity set and business key."""
 
     canonical_key = json.dumps(key, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(f"{entity_set}\0{canonical_key}".encode()).hexdigest()[:24]
-    return f"{entity_set}:{digest}"
+    identity = f"{entity_set}\0{canonical_key}"
+    prefix = entity_set
+    if source_type != "odata":
+        identity = f"{source_type}\0{identity}"
+        prefix = f"{source_type}:{entity_set}"
+    digest = hashlib.sha256(identity.encode()).hexdigest()[:24]
+    return f"{prefix}:{digest}"
 
 
 class KnowledgeRenderer:
@@ -83,13 +93,18 @@ class KnowledgeRenderer:
         text = "\n".join((title, "", *lines))
 
         citation = Citation(
+            source_type=record.source_type,
             entity_set=record.entity_set,
             key=record.key,
             source_url=source_url,
             etag=record.etag,
         )
         return KnowledgeDocument(
-            id=document_id_for(record.entity_set, record.key),
+            id=document_id_for(
+                record.entity_set,
+                record.key,
+                source_type=record.source_type,
+            ),
             recipe=recipe.name,
             title=title,
             text=text,

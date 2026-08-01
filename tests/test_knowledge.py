@@ -8,6 +8,7 @@ from sap_knowledge.knowledge import (
     FieldMapping,
     KnowledgeRecipe,
     KnowledgeRenderer,
+    document_id_for,
 )
 from sap_knowledge.models import SourceRecord
 
@@ -57,6 +58,21 @@ def test_renderer_allow_lists_fields_and_preserves_provenance() -> None:
     assert document.citation.key == {"ID": "P-100"}
     assert document.citation.etag == 'W/"10"'
     assert document.metadata["document_type"] == "product"
+
+
+def test_renderer_preserves_hana_source_type() -> None:
+    record = SourceRecord(
+        source_type="hana",
+        entity_set="Products",
+        key={"ID": "P-100"},
+        data={"Name": "Pump"},
+    )
+
+    document = KnowledgeRenderer().render(record, recipe())
+
+    assert document.citation.source_type == "hana"
+    assert document.id.startswith("hana:Products:")
+    assert document.id != document_id_for("Products", {"ID": "P-100"})
 
 
 def test_document_and_chunk_ids_are_deterministic() -> None:

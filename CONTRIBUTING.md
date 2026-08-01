@@ -40,7 +40,7 @@ pytest
 
 Use `ruff format .` to apply formatting. Add a regression test for every bug
 fix. Tests must not require credentials or a live SAP system; use an
-`httpx.MockTransport` and sanitized OData fixtures instead.
+`httpx.MockTransport`, fake DB-API connection, and sanitized fixtures instead.
 
 ## Security and test data
 
@@ -49,8 +49,10 @@ data, or metadata copied from a private system. Reduce payloads to the smallest
 synthetic fixture that demonstrates the behavior.
 
 Please do not open a public issue for a suspected vulnerability. Until a
-private security contact is published, contact the maintainer privately through
-their GitHub profile.
+private security contact is published, follow [SECURITY.md](SECURITY.md).
+
+By participating, you agree to follow the project's
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Pull requests
 
@@ -58,4 +60,3 @@ Keep pull requests focused. In the description, explain the problem, the chosen
 behavior, and how it was tested. Link the related issue with `Fixes #123` when
 appropriate. Maintainers may ask for changes when a contribution expands the
 public API or weakens continuation-link validation.
-

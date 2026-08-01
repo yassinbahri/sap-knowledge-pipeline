@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a focused source, transformation, or retrieval improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What SAP-to-knowledge workflow is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful public contract.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Security and data considerations
+      description: Explain authorization, sensitive fields, provenance, and compatibility concerns.
+    validations:
+      required: true

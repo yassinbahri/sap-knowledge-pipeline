@@ -1,18 +1,55 @@
+<div align="center">
+
 # SAP Knowledge Pipeline
 
-Turn selected SAP OData business objects into secure, citation-ready knowledge
-for retrieval-augmented generation (RAG).
+**Turn selected SAP OData and HANA business records into secure,
+citation-ready knowledge for RAG.**
+
+[![PyPI](https://img.shields.io/pypi/v/sap-knowledge-pipeline?label=PyPI&color=0ea5a8)](https://pypi.org/project/sap-knowledge-pipeline/)
+[![Python](https://img.shields.io/pypi/pyversions/sap-knowledge-pipeline?label=Python)](https://pypi.org/project/sap-knowledge-pipeline/)
+[![CI](https://github.com/yassinbahri/sap-knowledge-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/yassinbahri/sap-knowledge-pipeline/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/yassinbahri/sap-knowledge-pipeline)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-f59e0b)](CHANGELOG.md)
+
+![SAP Knowledge Pipeline architecture](https://raw.githubusercontent.com/yassinbahri/sap-knowledge-pipeline/main/docs/assets/hero.svg)
+
+[Install](#installation) · [OData](#minimal-source-example) ·
+[HANA](#sap-hana-to-rag-chunks) · [RAG search](#local-vector-search-and-rag-context) ·
+[Contribute](CONTRIBUTING.md)
+
+</div>
 
 > [!IMPORTANT]
 > This project is an early technical foundation. It is not affiliated with or
 > endorsed by SAP. It does not grant access to SAP systems or reproduce SAP's
 > authorization model.
 
+## Installation
+
+Install the core OData and knowledge-transformation package:
+
+```console
+python -m pip install sap-knowledge-pipeline
+```
+
+Choose optional integrations explicitly:
+
+```console
+python -m pip install "sap-knowledge-pipeline[hana]"
+python -m pip install "sap-knowledge-pipeline[fastembed]"
+python -m pip install "sap-knowledge-pipeline[all]"
+```
+
+Python 3.11 through 3.14 are supported. This is an early alpha release: pin the
+version, test recipes against non-production data first, and review the
+[known limitations](#known-limitations) before adopting it.
+
 ## How it fits together
 
 ```mermaid
 flowchart LR
-    SAP["SAP OData V2 or V4"] --> SOURCE["Secure source client"]
+    ODATA["SAP OData V2 or V4"] --> SOURCE["Secure source client"]
+    HANA["SAP HANA SELECT"] --> SOURCE
     SOURCE --> RECORD["Canonical source records"]
     RECORD --> RECIPE["Explicit field allow-list"]
     RECIPE --> DOC["Citation-ready documents"]
@@ -20,9 +57,9 @@ flowchart LR
     CHUNK --> TARGET["Your embedder or vector store"]
 ```
 
-The package stops before the final target on purpose. Its output is portable,
-so an application can choose OpenAI, a local embedding model, pgvector,
-Qdrant, SAP HANA Cloud, or another store without changing SAP extraction.
+The package's synchronization events are portable, so an application can
+choose OpenAI, a local embedding model, pgvector, Qdrant, SAP HANA Cloud, or
+another store without changing SAP extraction.
 
 The optional Qdrant integration now provides the first end-to-end local target.
 
@@ -41,9 +78,26 @@ pipeline:
 - Declarative recipes that allow-list fields before they enter RAG.
 - Deterministic knowledge documents, citations, and character-aware chunks.
 - A conservative SAP Business Partner starter recipe.
+- Certificate-validated SAP HANA connections through the optional SAP
+  `hdbcli` driver.
+- Explicit, parameterized HANA `SELECT` datasets streamed in bounded pages.
+- Local FastEmbed embeddings and a persistent Qdrant knowledge index.
 
-Embedding providers, durable checkpoints, and vector-store adapters will be
-added after the source and transformation contracts are stable.
+OData synchronization includes durable checkpoints and delta-link handling.
+The initial HANA adapter performs snapshot reads; resumable keyset pagination
+and deletion tracking remain future work.
+
+## Known limitations
+
+- HANA is currently a Python API; the TOML CLI commands target OData.
+- HANA synchronization is snapshot-only and does not reconcile deleted rows.
+- The package does not infer SAP module semantics, authorization scope, or safe
+  fields from table names.
+- Only Business Partner has a built-in recipe; other datasets require an
+  explicit `KnowledgeRecipe`.
+- Qdrant local mode is intended for development and smaller indexes.
+- No LLM is called automatically. Applications decide where retrieved context
+  is sent.
 
 ## Development setup
 
@@ -158,6 +212,127 @@ Every chunk includes:
 
 Stable IDs let a later sink upsert changed chunks without duplicating them.
 The structured citation lets a RAG application show where an answer came from.
+
+## SAP HANA to RAG chunks
+
+Install the optional SAP HANA driver:
+
+```console
+python -m pip install "sap-knowledge-pipeline[hana]"
+```
+
+Use a dedicated database principal with only `SELECT` privileges on approved
+views. The package rejects obvious multi-statement and non-`SELECT` input,
+but SQL-text validation is not an authorization boundary. Database grants are
+the security boundary.
+
+Keep connection values in environment variables:
+
+```powershell
+$env:SAP_HANA_ADDRESS = "your-host.hanacloud.ondemand.com"
+$env:SAP_HANA_PORT = "443"
+$env:SAP_HANA_USER = "your-read-only-user"
+$env:SAP_HANA_PASSWORD = "your-password"
+```
+
+Define an explicit dataset and its stable business key:
+
+```python
+import os
+
+from sap_knowledge.sources.hana import HanaClient, HanaDataset
+
+
+products = HanaDataset(
+    name="PRODUCT_KNOWLEDGE",
+    statement=(
+        'SELECT "PRODUCT_ID", "PRODUCT_NAME", "DESCRIPTION" '
+        'FROM "RAG_READ"."PRODUCT_KNOWLEDGE" '
+        'WHERE "ACTIVE" = ? ORDER BY "PRODUCT_ID"'
+    ),
+    key_fields=("PRODUCT_ID",),
+    parameters=(True,),
+)
+
+with HanaClient.connect(
+    address=os.environ["SAP_HANA_ADDRESS"],
+    port=int(os.environ.get("SAP_HANA_PORT", "443")),
+    user=os.environ["SAP_HANA_USER"],
+    password=os.environ["SAP_HANA_PASSWORD"],
+) as source:
+    for page in source.pages(products, page_size=500):
+        for record in page.records:
+            print(record.model_dump_json())
+```
+
+Connections always request encryption and certificate validation. Query
+parameters are passed separately to the SAP driver. Duplicate result-column
+names, missing business keys, and null key values fail before records enter the
+knowledge pipeline. See `examples/hana_to_rag.py` for transformation into
+citation-ready chunks.
+
+The adapter works at the HANA SQL layer. It is not specific to S/4HANA: an ECC
+EHP8 system on HANA, S/4HANA, HANA Cloud, or a custom HANA application can all
+be sources when the configured user can read a stable view or query. The
+meaning and safety of SAP application tables still belongs in an explicit
+recipe or curated database view.
+
+### Discover accessible HANA metadata
+
+Catalog discovery returns only metadata visible to the connected principal.
+It does not select business rows:
+
+```python
+with HanaClient.connect(
+    address=os.environ["SAP_HANA_ADDRESS"],
+    port=int(os.environ.get("SAP_HANA_PORT", "443")),
+    user=os.environ["SAP_HANA_USER"],
+    password=os.environ["SAP_HANA_PASSWORD"],
+) as source:
+    catalog = source.catalog()
+    for schema in catalog.schemas():
+        for database_object in catalog.objects(schema):
+            columns = catalog.columns(schema, database_object.name)
+            print(schema, database_object.name, columns)
+```
+
+System schemas are excluded by default. HANA system views filter their results
+according to the connected user's privileges. Do not grant `CATALOG READ` to a
+production ingestion account merely to make discovery easier; create a curated
+schema or grant `SELECT` only on approved views instead.
+
+### Write HANA snapshot events
+
+`HanaSnapshotKnowledgePipeline` connects HANA to the same portable JSONL event
+format consumed by the Qdrant indexer:
+
+```python
+pipeline = HanaSnapshotKnowledgePipeline(
+    source=source,
+    dataset=products,
+    recipe=product_recipe,
+    sink=JsonlEventSink("data/hana-product-events.jsonl"),
+)
+result = await pipeline.run()
+```
+
+Snapshot events have deterministic IDs, so rerunning the same approved query
+upserts the same documents. This initial implementation does not yet detect
+rows that disappeared between snapshots; incremental cursors and deletion
+reconciliation are still required for production synchronization.
+
+### SAP module coverage
+
+The extraction and RAG layers are module-neutral. FI/CO, MM, SD, PM, HCM,
+SuccessFactors replication data, industry add-ons, and custom `Z*` objects can
+all use the same pipeline when represented as stable rows. Module-specific
+support is not automatic: joins, organizational scope, authorization rules,
+business terminology, keys, sensitive-field exclusions, and change tracking
+must be defined by a curated view or explicit query and a `KnowledgeRecipe`.
+
+The only built-in SAP business recipe currently included is the OData Business
+Partner recipe. HANA module recipes should be added one validated use case at a
+time rather than guessing directly from SAP table names.
 
 ## Command-line usage
 
