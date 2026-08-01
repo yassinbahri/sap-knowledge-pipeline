@@ -52,12 +52,28 @@ class ServiceMetadata:
 
 
 def _children(element: etree._Element, local_name: str) -> Iterable[etree._Element]:
-    result = element.xpath(f"./*[local-name()='{local_name}']")
-    return cast(list[etree._Element], result)
+    return _elements(element, f"./*[local-name()='{local_name}']")
+
+
+def _elements(element: etree._Element, expression: str) -> list[etree._Element]:
+    """Narrow an XPath expression that is known to select only elements."""
+
+    return cast(list[etree._Element], element.xpath(expression))
+
+
+def _attribute(
+    element: etree._Element,
+    name: str,
+    default: str | None = None,
+) -> str | None:
+    """Return an XML attribute as text with a precise static type."""
+
+    value = element.get(name)
+    return str(value) if value is not None else default
 
 
 def _detect_version(root: etree._Element) -> ODataVersion:
-    version = root.get("Version", "")
+    version = _attribute(root, "Version", "") or ""
     if version.startswith("4"):
         return ODataVersion.V4
     return ODataVersion.V2
@@ -78,39 +94,46 @@ def parse_metadata(content: bytes | str) -> ServiceMetadata:
         tuple[tuple[str, ...], tuple[PropertyDefinition, ...], tuple[str, ...]],
     ] = {}
 
-    for schema in root.xpath("//*[local-name()='Schema']"):
-        namespace = schema.get("Namespace")
+    for schema in _elements(root, "//*[local-name()='Schema']"):
+        namespace = _attribute(schema, "Namespace")
         if not namespace:
             continue
-        for entity_type in _children(schema, "EntityType"):
-            name = entity_type.get("Name")
+        for entity_type_element in _children(schema, "EntityType"):
+            name = _attribute(entity_type_element, "Name")
             if not name:
                 continue
-            key_elements = entity_type.xpath(
-                "./*[local-name()='Key']/*[local-name()='PropertyRef']"
+            key_elements = _elements(
+                entity_type_element, "./*[local-name()='Key']/*[local-name()='PropertyRef']"
             )
-            keys = tuple(key.get("Name") for key in key_elements if key.get("Name") is not None)
+            keys = tuple(
+                key_name
+                for key in key_elements
+                if (key_name := _attribute(key, "Name")) is not None
+            )
             properties = tuple(
                 PropertyDefinition(
-                    name=prop.get("Name", ""),
-                    type=prop.get("Type", ""),
-                    nullable=prop.get("Nullable", "true").lower() != "false",
-                    max_length=prop.get("MaxLength"),
+                    name=_attribute(prop, "Name", "") or "",
+                    type=_attribute(prop, "Type", "") or "",
+                    nullable=(_attribute(prop, "Nullable", "true") or "true").lower() != "false",
+                    max_length=_attribute(prop, "MaxLength"),
                 )
-                for prop in _children(entity_type, "Property")
-                if prop.get("Name")
+                for prop in _children(entity_type_element, "Property")
+                if _attribute(prop, "Name")
             )
             navigation = tuple(
-                nav.get("Name", "")
-                for nav in _children(entity_type, "NavigationProperty")
-                if nav.get("Name")
+                _attribute(nav, "Name", "") or ""
+                for nav in _children(entity_type_element, "NavigationProperty")
+                if _attribute(nav, "Name")
             )
             entity_types[f"{namespace}.{name}"] = (keys, properties, navigation)
 
     entity_sets: list[EntitySetDefinition] = []
-    for entity_set in root.xpath("//*[local-name()='EntityContainer']/*[local-name()='EntitySet']"):
-        name = entity_set.get("Name")
-        entity_type = entity_set.get("EntityType")
+    for entity_set in _elements(
+        root,
+        "//*[local-name()='EntityContainer']/*[local-name()='EntitySet']",
+    ):
+        name = _attribute(entity_set, "Name")
+        entity_type = _attribute(entity_set, "EntityType")
         if not name or not entity_type:
             continue
         definition = entity_types.get(entity_type)
