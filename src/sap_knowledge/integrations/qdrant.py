@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sap_knowledge.errors import OptionalDependencyError, VectorIndexError
@@ -105,6 +105,25 @@ class QdrantKnowledgeIndex:
             ]
         )
 
+    def _metadata_filter(
+        self,
+        filters: Mapping[str, str | int | float | bool | Sequence[str | int | float | bool]],
+    ) -> Any:
+        _, models = _qdrant()
+        conditions = []
+        for key, value in filters.items():
+            if not key or any(character in key for character in "\r\n"):
+                raise ValueError("metadata filter keys must be non-empty single-line strings")
+            if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+                values = list(value)
+                if not values:
+                    raise ValueError(f"metadata filter {key!r} must not be empty")
+                match = models.MatchAny(any=values)
+            else:
+                match = models.MatchValue(value=value)
+            conditions.append(models.FieldCondition(key=key, match=match))
+        return models.Filter(must=conditions)
+
     def _existing_ids(self, document_ids: Sequence[str]) -> set[str]:
         found: set[str] = set()
         offset: Any = None
@@ -182,7 +201,14 @@ class QdrantKnowledgeIndex:
 
         await asyncio.to_thread(self._write_sync, events)
 
-    def search(self, query: str, *, limit: int = 5) -> tuple[SearchHit, ...]:
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        filters: Mapping[str, str | int | float | bool | Sequence[str | int | float | bool]]
+        | None = None,
+    ) -> tuple[SearchHit, ...]:
         """Embed a question and return the closest citation-ready chunks."""
 
         if limit <= 0:
@@ -194,6 +220,7 @@ class QdrantKnowledgeIndex:
         response = self.client.query_points(
             collection_name=self.collection_name,
             query=vector,
+            query_filter=self._metadata_filter(filters) if filters else None,
             with_payload=True,
             limit=limit,
         )

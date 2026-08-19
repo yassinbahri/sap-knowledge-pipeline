@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 import sap_knowledge.cli as cli_module
-from sap_knowledge.cli import _metadata_data, _validate_recipe, run_cli
+from sap_knowledge.cli import _metadata_data, _parse_filters, _validate_recipe, run_cli
 from sap_knowledge.configuration import load_config
 from sap_knowledge.recipes import BUSINESS_PARTNER
 from sap_knowledge.sources.odata import ODataVersion
@@ -122,6 +122,17 @@ def test_metadata_validation_and_json_shape() -> None:
     assert data["version"] == "2"
     assert data["entity_sets"][0]["keys"] == ["BusinessPartner"]
     assert json.dumps(data)
+
+
+def test_metadata_filters_group_repeated_keys_and_reject_invalid_values() -> None:
+    assert _parse_filters(
+        ("sap_company_code=1000", "security_roles=FINANCE", "security_roles=AUDIT")
+    ) == {
+        "sap_company_code": "1000",
+        "security_roles": ("FINANCE", "AUDIT"),
+    }
+    with pytest.raises(cli_module.RecipeValidationError, match="KEY=VALUE"):
+        _parse_filters(("security_roles=",))
 
 
 def test_sync_command_runs_config_to_jsonl_and_checkpoint(

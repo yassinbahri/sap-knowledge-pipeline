@@ -6,6 +6,12 @@ still evolving.
 
 ## [Unreleased]
 
+### Added
+
+- Recipe-controlled retrieval metadata that stays outside embedded document text.
+- Qdrant metadata filters and repeatable CLI `--filter KEY=VALUE` options for scoped search and
+  grounded prompts.
+
 ## [0.1.0a1] - 2026-08-01
 
 ### Added

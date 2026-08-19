@@ -33,6 +33,12 @@ def _is_empty(value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
 
+def _metadata_value(value: Any) -> Any:
+    """Normalize provider values to deterministic JSON-compatible metadata."""
+
+    return json.loads(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
+
+
 def document_id_for(
     entity_set: str,
     key: Mapping[str, Any],
@@ -92,6 +98,21 @@ class KnowledgeRenderer:
         title = " — ".join(title_parts)
         text = "\n".join((title, "", *lines))
 
+        metadata: dict[str, Any] = {
+            "document_type": recipe.document_type,
+            "entity_set": record.entity_set,
+            "recipe": recipe.name,
+        }
+        for mapping in recipe.metadata:
+            value = record.data.get(mapping.source)
+            if _is_empty(value):
+                if mapping.required:
+                    raise RecipeValidationError(
+                        f"required metadata field {mapping.source!r} is missing or empty"
+                    )
+                continue
+            metadata[mapping.key] = _metadata_value(value)
+
         citation = Citation(
             source_type=record.source_type,
             entity_set=record.entity_set,
@@ -109,9 +130,5 @@ class KnowledgeRenderer:
             title=title,
             text=text,
             citation=citation,
-            metadata={
-                "document_type": recipe.document_type,
-                "entity_set": record.entity_set,
-                "recipe": recipe.name,
-            },
+            metadata=metadata,
         )

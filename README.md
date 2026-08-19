@@ -413,6 +413,56 @@ Install the optional local embedding and Qdrant dependencies:
 python -m pip install "sap-knowledge-pipeline[fastembed]"
 ```
 
+### Scope retrieval with SAP metadata
+
+Business authorization fields should usually control retrieval without becoming part of the
+embedded text. Add explicit metadata mappings when defining a recipe:
+
+```python
+from sap_knowledge.knowledge import FieldMapping, KnowledgeRecipe, MetadataMapping
+
+recipe = KnowledgeRecipe(
+    name="maintenance_orders",
+    entity_set="MaintenanceOrders",
+    key_fields=("OrderID",),
+    title_fields=("Description",),
+    fields=(
+        FieldMapping(source="Description", label="Description", required=True),
+        FieldMapping(source="Status", label="Status"),
+    ),
+    metadata=(
+        MetadataMapping(source="CompanyCode", key="sap_company_code", required=True),
+        MetadataMapping(source="AllowedRoles", key="security_roles", required=True),
+    ),
+)
+```
+
+Metadata fields are requested from SAP and stored with each chunk, but are not placed in the
+document text or sent to the embedding model. Require them when searching:
+
+```python
+hits = index.search(
+    "Which pumps need maintenance?",
+    filters={
+        "sap_company_code": "1000",
+        "security_roles": "MAINTENANCE",
+    },
+)
+```
+
+The CLI supports the same fail-closed query shape. Repeating one key means “any of these values”;
+different keys are combined with “and”:
+
+```console
+sap-knowledge search "Which pumps need maintenance?" \
+  --filter sap_company_code=1000 \
+  --filter security_roles=MAINTENANCE
+```
+
+These filters are an enforcement building block, not an identity or authorization provider. The
+application must derive filter values from a trusted authenticated identity and must never accept
+tenant, company-code, or role filters directly from an untrusted user request.
+
 For a source checkout:
 
 ```console

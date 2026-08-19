@@ -71,11 +71,37 @@ def _parser() -> argparse.ArgumentParser:
     search = commands.add_parser("search", help="Search the local vector index")
     search.add_argument("query", help="Natural-language retrieval query")
     search.add_argument("--limit", type=int, default=5, help="Maximum results (default: 5)")
+    search.add_argument(
+        "--filter",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Require retrieval metadata to match; repeat for multiple values or keys",
+    )
 
     prompt = commands.add_parser("prompt", help="Build a grounded prompt from vector results")
     prompt.add_argument("query", help="Question to retrieve context for")
     prompt.add_argument("--limit", type=int, default=5, help="Maximum sources (default: 5)")
+    prompt.add_argument(
+        "--filter",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Require retrieval metadata to match; repeat for multiple values or keys",
+    )
     return parser
+
+
+def _parse_filters(values: Sequence[str]) -> dict[str, str | tuple[str, ...]]:
+    parsed: dict[str, list[str]] = {}
+    for item in values:
+        key, separator, value = item.partition("=")
+        if not separator or not key or not value:
+            raise RecipeValidationError("metadata filters must use non-empty KEY=VALUE syntax")
+        parsed.setdefault(key, []).append(value)
+    return {
+        key: entries[0] if len(entries) == 1 else tuple(entries) for key, entries in parsed.items()
+    }
 
 
 def _source(config: AppConfig, http: httpx.AsyncClient) -> ODataClient:
@@ -246,19 +272,19 @@ async def _index(config: AppConfig, *, events_path: Path | None) -> None:
     )
 
 
-def _search(config: AppConfig, *, query: str, limit: int) -> None:
+def _search(config: AppConfig, *, query: str, limit: int, filters: Sequence[str] = ()) -> None:
     index = _vector_index(config)
     try:
-        hits = index.search(query, limit=limit)
+        hits = index.search(query, limit=limit, filters=_parse_filters(filters))
     finally:
         index.close()
     print(json.dumps([hit.model_dump(mode="json") for hit in hits], indent=2))
 
 
-def _prompt(config: AppConfig, *, query: str, limit: int) -> None:
+def _prompt(config: AppConfig, *, query: str, limit: int, filters: Sequence[str] = ()) -> None:
     index = _vector_index(config)
     try:
-        hits = index.search(query, limit=limit)
+        hits = index.search(query, limit=limit, filters=_parse_filters(filters))
     finally:
         index.close()
     print(build_rag_prompt(query, hits))
@@ -279,9 +305,19 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
         elif arguments.command == "index":
             asyncio.run(_index(config, events_path=arguments.events))
         elif arguments.command == "search":
-            _search(config, query=arguments.query, limit=arguments.limit)
+            _search(
+                config,
+                query=arguments.query,
+                limit=arguments.limit,
+                filters=arguments.filter,
+            )
         else:
-            _prompt(config, query=arguments.query, limit=arguments.limit)
+            _prompt(
+                config,
+                query=arguments.query,
+                limit=arguments.limit,
+                filters=arguments.filter,
+            )
     except (SapKnowledgeError, httpx.HTTPError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

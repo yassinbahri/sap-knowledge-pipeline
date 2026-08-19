@@ -8,6 +8,7 @@ from sap_knowledge.knowledge import (
     FieldMapping,
     KnowledgeRecipe,
     KnowledgeRenderer,
+    MetadataMapping,
     document_id_for,
 )
 from sap_knowledge.models import SourceRecord
@@ -26,6 +27,10 @@ def recipe() -> KnowledgeRecipe:
             FieldMapping(source="Active", label="Active"),
             FieldMapping(source="Tags", label="Tags"),
         ),
+        metadata=(
+            MetadataMapping(source="CompanyCode", key="sap_company_code", required=True),
+            MetadataMapping(source="AllowedRoles", key="security_roles"),
+        ),
     )
 
 
@@ -40,6 +45,8 @@ def test_renderer_allow_lists_fields_and_preserves_provenance() -> None:
             "Active": True,
             "Tags": ["fluid", "factory"],
             "InternalMargin": "43.2%",
+            "CompanyCode": "1000",
+            "AllowedRoles": ["PROCUREMENT", "MAINTENANCE"],
         },
         etag='W/"10"',
     )
@@ -58,6 +65,10 @@ def test_renderer_allow_lists_fields_and_preserves_provenance() -> None:
     assert document.citation.key == {"ID": "P-100"}
     assert document.citation.etag == 'W/"10"'
     assert document.metadata["document_type"] == "product"
+    assert document.metadata["sap_company_code"] == "1000"
+    assert document.metadata["security_roles"] == ["PROCUREMENT", "MAINTENANCE"]
+    assert "CompanyCode" not in document.text
+    assert "AllowedRoles" not in document.text
 
 
 def test_renderer_preserves_hana_source_type() -> None:
@@ -65,7 +76,7 @@ def test_renderer_preserves_hana_source_type() -> None:
         source_type="hana",
         entity_set="Products",
         key={"ID": "P-100"},
-        data={"Name": "Pump"},
+        data={"Name": "Pump", "CompanyCode": "1000"},
     )
 
     document = KnowledgeRenderer().render(record, recipe())
@@ -79,7 +90,11 @@ def test_document_and_chunk_ids_are_deterministic() -> None:
     record = SourceRecord(
         entity_set="Products",
         key={"ID": "P-100"},
-        data={"Name": "Pump", "Description": "useful details " * 20},
+        data={
+            "Name": "Pump",
+            "Description": "useful details " * 20,
+            "CompanyCode": "1000",
+        },
     )
     renderer = KnowledgeRenderer()
     document_one = renderer.render(record, recipe())
@@ -107,7 +122,7 @@ def test_renderer_rejects_wrong_entity_and_required_data() -> None:
     missing_name = SourceRecord(
         entity_set="Products",
         key={"ID": "1"},
-        data={"Description": "No title"},
+        data={"Description": "No title", "CompanyCode": "1000"},
     )
 
     try:
@@ -140,5 +155,30 @@ def test_recipe_requires_unique_and_declared_fields() -> None:
         raise AssertionError("unknown title field should be rejected")
 
 
+def test_recipe_rejects_unsafe_or_reserved_metadata_keys() -> None:
+    for key, message in (("security.roles", "string_pattern"), ("text", "reserved keys")):
+        try:
+            KnowledgeRecipe(
+                name="invalid",
+                entity_set="Products",
+                key_fields=("ID",),
+                title_fields=("Name",),
+                fields=(FieldMapping(source="Name", label="Name"),),
+                metadata=(MetadataMapping(source="Role", key=key),),
+            )
+        except ValidationError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError(f"metadata key {key!r} should be rejected")
+
+
 def test_recipe_select_fields_are_minimal_and_ordered() -> None:
-    assert recipe().select_fields == ("ID", "Name", "Description", "Active", "Tags")
+    assert recipe().select_fields == (
+        "ID",
+        "Name",
+        "Description",
+        "Active",
+        "Tags",
+        "CompanyCode",
+        "AllowedRoles",
+    )

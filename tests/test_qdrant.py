@@ -50,7 +50,11 @@ def chunk(document_id: str, ordinal: int, text: str, suffix: str) -> KnowledgeCh
         ordinal=ordinal,
         text=text,
         citation=citation,
-        metadata={"recipe": "business-partner"},
+        metadata={
+            "recipe": "business-partner",
+            "sap_company_code": "1000" if "pump" in document_id else "2000",
+            "security_roles": ["MAINTENANCE"] if "pump" in document_id else ["PROCUREMENT"],
+        },
     )
 
 
@@ -97,6 +101,18 @@ def test_qdrant_upsert_search_replace_and_delete() -> None:
 
     assert hits[0].document_id == pump_document
     assert hits[0].citation.key == {"BusinessPartner": pump_document}
+    assert (
+        index.search(
+            "supplier",
+            filters={"sap_company_code": "1000", "security_roles": "MAINTENANCE"},
+        )[0].document_id
+        == pump_document
+    )
+    assert index.search(
+        "supplier",
+        filters={"sap_company_code": ("1000", "2000")},
+    )
+    assert not index.search("pump", filters={"security_roles": "FINANCE"})
     assert client.count("business_partners", exact=True).count == 3
 
     asyncio.run(

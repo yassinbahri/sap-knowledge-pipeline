@@ -13,10 +13,15 @@ issue so the design can be agreed upon first.
 
 ## `0.2` — safer incremental synchronization
 
+- Carry recipe-approved authorization and business metadata into filterable vector payloads.
 - Support watermark-based incremental HANA snapshots.
 - Reconcile deleted source records through explicit policies.
 - Persist richer run statistics and structured observability events.
 - Add opt-in field transformation and redaction hooks before document rendering.
+- Add retrieval evaluation for relevance, citation integrity, and access-control leakage.
+
+Product priorities are informed by the linked evidence in
+[`docs/product-research.md`](docs/product-research.md).
 
 ## `0.3` — extension ecosystem
 
