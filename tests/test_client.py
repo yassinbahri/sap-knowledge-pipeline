@@ -82,3 +82,56 @@ def test_non_json_response_is_rejected() -> None:
 
     with pytest.raises(InvalidODataPayloadError, match="not valid JSON"):
         asyncio.run(scenario())
+
+
+def test_client_retries_transport_throttling_and_transient_server_errors() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise httpx.ConnectError("temporary connection failure", request=request)
+        if attempts == 2:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        if attempts == 3:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"value": []})
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = ODataClient(
+                service_root="https://sap.example.test/odata/",
+                version=ODataVersion.V4,
+                http=http,
+                max_retries=3,
+                retry_backoff_seconds=0,
+            )
+            pages = [page async for page in client.pages("Products", key_fields=("ID",))]
+        assert len(pages) == 1
+
+    asyncio.run(scenario())
+    assert attempts == 4
+
+
+def test_client_does_not_retry_non_transient_statuses() -> None:
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(400, request=request)
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = ODataClient(
+                service_root="https://sap.example.test/odata/",
+                version=ODataVersion.V4,
+                http=http,
+                retry_backoff_seconds=0,
+            )
+            with pytest.raises(httpx.HTTPStatusError):
+                await anext(client.pages("Products", key_fields=("ID",)))
+
+    asyncio.run(scenario())
+    assert attempts == 1

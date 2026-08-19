@@ -11,6 +11,11 @@ still evolving.
 - Recipe-controlled retrieval metadata that stays outside embedded document text.
 - Qdrant metadata filters and repeatable CLI `--filter KEY=VALUE` options for scoped search and
   grounded prompts.
+- Bounded retries with jitter and `Retry-After` support for transient OData failures.
+
+### Security
+
+- CLI HTTP diagnostics now remove URL credentials, query strings, and response bodies.
 
 ## [0.1.0a1] - 2026-08-01
 

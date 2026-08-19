@@ -7,7 +7,13 @@ import httpx
 import pytest
 
 import sap_knowledge.cli as cli_module
-from sap_knowledge.cli import _metadata_data, _parse_filters, _validate_recipe, run_cli
+from sap_knowledge.cli import (
+    _metadata_data,
+    _parse_filters,
+    _safe_http_error,
+    _validate_recipe,
+    run_cli,
+)
 from sap_knowledge.configuration import load_config
 from sap_knowledge.recipes import BUSINESS_PARTNER
 from sap_knowledge.sources.odata import ODataVersion
@@ -133,6 +139,21 @@ def test_metadata_filters_group_repeated_keys_and_reject_invalid_values() -> Non
     }
     with pytest.raises(cli_module.RecipeValidationError, match="KEY=VALUE"):
         _parse_filters(("security_roles=",))
+
+
+def test_http_diagnostics_remove_credentials_query_and_response_body() -> None:
+    request = httpx.Request(
+        "GET", "https://user:password@sap.example.test/odata/?$skiptoken=secret"
+    )
+    response = httpx.Response(503, text="sensitive provider response", request=request)
+    error = httpx.HTTPStatusError("unsafe original message", request=request, response=response)
+
+    message = _safe_http_error(error)
+
+    assert message == "HTTP 503 for GET https://sap.example.test/odata/"
+    assert "password" not in message
+    assert "skiptoken" not in message
+    assert "sensitive" not in message
 
 
 def test_sync_command_runs_config_to_jsonl_and_checkpoint(

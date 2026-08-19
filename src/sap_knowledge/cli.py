@@ -9,6 +9,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import TypeAdapter, ValidationError
@@ -109,7 +110,25 @@ def _source(config: AppConfig, http: httpx.AsyncClient) -> ODataClient:
         service_root=config.service.root,
         version=config.service.version,
         http=http,
+        max_retries=config.service.max_retries,
+        retry_backoff_seconds=config.service.retry_backoff_seconds,
+        max_retry_delay_seconds=config.service.max_retry_delay_seconds,
     )
+
+
+def _safe_http_error(error: httpx.HTTPError) -> str:
+    """Describe an HTTP failure without query strings, credentials, or response bodies."""
+
+    request = error.request
+    parsed = urlsplit(str(request.url))
+    host = parsed.hostname or "unknown-host"
+    if ":" in host:
+        host = f"[{host}]"
+    authority = f"{host}:{parsed.port}" if parsed.port is not None else host
+    location = f"{parsed.scheme}://{authority}{parsed.path}"
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP {error.response.status_code} for {request.method} {location}"
+    return f"HTTP transport error for {request.method} {location}"
 
 
 def _validate_recipe(metadata: ServiceMetadata, recipe: KnowledgeRecipe) -> None:
@@ -318,7 +337,10 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                 limit=arguments.limit,
                 filters=arguments.filter,
             )
-    except (SapKnowledgeError, httpx.HTTPError) as exc:
+    except httpx.HTTPError as exc:
+        print(f"error: {_safe_http_error(exc)}", file=sys.stderr)
+        return 1
+    except SapKnowledgeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

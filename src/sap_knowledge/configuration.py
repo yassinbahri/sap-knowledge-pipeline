@@ -31,6 +31,9 @@ class ServiceSettings(BaseModel):
     api_key_env: str | None = None
     api_key_header: str = "APIKey"
     timeout_seconds: float = Field(default=30, gt=0, le=300)
+    max_retries: int = Field(default=3, ge=0, le=10)
+    retry_backoff_seconds: float = Field(default=0.5, ge=0, le=60)
+    max_retry_delay_seconds: float = Field(default=30, gt=0, le=300)
 
     @model_validator(mode="after")
     def validate_authentication(self) -> Self:

@@ -4,6 +4,9 @@ version = "2"
 username_env = "SAP_USER"
 password_env = "SAP_PASSWORD"
 timeout_seconds = 30
+max_retries = 3
+retry_backoff_seconds = 0.5
+max_retry_delay_seconds = 30
 
 [pipeline]
 recipe = "business_partner"
