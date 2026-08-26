@@ -82,8 +82,8 @@ and deletion tracking remain future work.
 
 ## Known limitations
 
-- HANA snapshot synchronization is available from the TOML CLI, while HANA
-  catalog inspection is still Python API-only.
+- HANA snapshot synchronization and safe catalog inspection are available from
+  the TOML CLI.
 - HANA synchronization is snapshot-only and does not reconcile deleted rows.
 - The package does not infer SAP module semantics, authorization scope, or safe
   fields from table names.
@@ -295,6 +295,17 @@ according to the connected user's privileges. Do not grant `CATALOG READ` to a
 production ingestion account merely to make discovery easier; create a curated
 schema or grant `SELECT` only on approved views instead.
 
+The same discovery workflow is available from the CLI when `source = "hana"`:
+
+```console
+sap-knowledge --config sap-hana.toml inspect
+sap-knowledge --config sap-hana.toml inspect --schema RAG_READ
+sap-knowledge --config sap-hana.toml inspect --schema RAG_READ --object PRODUCT_KNOWLEDGE --json
+```
+
+Use `--include-system` only for local troubleshooting. The CLI never prints the
+configured HANA password and does not include SQL parameters in catalog output.
+
 ### Write HANA snapshot events
 
 `HanaSnapshotKnowledgePipeline` connects HANA to the same portable JSONL event
@@ -399,6 +410,14 @@ Inspect the service before extracting data:
 ```console
 sap-knowledge --config sap-knowledge.toml inspect
 sap-knowledge --config sap-knowledge.toml inspect --entity-set A_BusinessPartner --json
+```
+
+For HANA configurations, inspect accessible schemas, objects, or columns:
+
+```console
+sap-knowledge --config sap-hana.toml inspect
+sap-knowledge --config sap-hana.toml inspect --schema RAG_READ
+sap-knowledge --config sap-hana.toml inspect --schema RAG_READ --object PRODUCT_KNOWLEDGE --json
 ```
 
 Run or resume synchronization:

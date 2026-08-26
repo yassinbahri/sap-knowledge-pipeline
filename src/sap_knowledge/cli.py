@@ -46,8 +46,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    inspect = commands.add_parser("inspect", help="Inspect OData EDMX metadata")
+    inspect = commands.add_parser("inspect", help="Inspect configured OData or HANA metadata")
     inspect.add_argument("--entity-set", help="Show one entity set instead of all sets")
+    inspect.add_argument("--schema", help="For HANA, show objects in one schema")
+    inspect.add_argument("--object", help="For HANA, show columns for one schema object")
+    inspect.add_argument(
+        "--include-system",
+        action="store_true",
+        help="For HANA, include system schemas in schema listings",
+    )
     inspect.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     sync = commands.add_parser("sync", help="Run or resume knowledge synchronization")
@@ -182,7 +189,134 @@ def _metadata_data(metadata: ServiceMetadata, entity_set: str | None) -> dict[st
     }
 
 
-async def _inspect(config: AppConfig, *, entity_set: str | None, as_json: bool) -> None:
+def _hana_catalog_data(
+    client: HanaClient,
+    *,
+    schema: str | None,
+    object_name: str | None,
+    include_system: bool,
+) -> dict[str, Any]:
+    catalog = client.catalog()
+    if object_name and not schema:
+        raise RecipeValidationError("HANA object inspection requires --schema")
+    if object_name:
+        return {
+            "source": "hana",
+            "schema": schema,
+            "object": object_name,
+            "columns": [
+                {
+                    "name": column.name,
+                    "position": column.position,
+                    "data_type": column.data_type,
+                    "length": column.length,
+                    "scale": column.scale,
+                    "nullable": column.nullable,
+                }
+                for column in catalog.columns(schema or "", object_name)
+            ],
+        }
+    if schema:
+        return {
+            "source": "hana",
+            "schema": schema,
+            "objects": [
+                {
+                    "schema": database_object.schema,
+                    "name": database_object.name,
+                    "kind": database_object.kind,
+                }
+                for database_object in catalog.objects(schema)
+            ],
+        }
+    return {
+        "source": "hana",
+        "schemas": list(catalog.schemas(include_system=include_system)),
+    }
+
+
+def _print_hana_catalog(data: dict[str, Any]) -> None:
+    if "columns" in data:
+        print(f"HANA object {data['schema']}.{data['object']} — {len(data['columns'])} column(s)")
+        for column in data["columns"]:
+            details = column["data_type"]
+            if column["length"] is not None:
+                details = f"{details}({column['length']})"
+            nullable = "nullable" if column["nullable"] else "not nullable"
+            if column["nullable"] is None:
+                nullable = "nullable unknown"
+            print(f"- {column['position']}: {column['name']} {details}, {nullable}")
+        return
+    if "objects" in data:
+        print(f"HANA schema {data['schema']} — {len(data['objects'])} object(s)")
+        for database_object in data["objects"]:
+            print(f"- {database_object['kind']}: {database_object['name']}")
+        return
+    print(f"HANA catalog — {len(data['schemas'])} schema(s)")
+    for schema in data["schemas"]:
+        print(f"- {schema}")
+
+
+def _inspect_hana(
+    config: AppConfig,
+    *,
+    schema: str | None,
+    object_name: str | None,
+    include_system: bool,
+    as_json: bool,
+) -> None:
+    hana = config.hana_source
+    client = HanaClient.connect(
+        address=hana.address,
+        port=hana.port,
+        user=hana.user,
+        password=hana.password,
+        connect_timeout_ms=hana.connect_timeout_ms,
+    )
+    try:
+        data = _hana_catalog_data(
+            client,
+            schema=schema,
+            object_name=object_name,
+            include_system=include_system,
+        )
+    finally:
+        client.close()
+
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return
+    _print_hana_catalog(data)
+
+
+async def _inspect(
+    config: AppConfig,
+    *,
+    entity_set: str | None,
+    schema: str | None,
+    object_name: str | None,
+    include_system: bool,
+    as_json: bool,
+) -> None:
+    if config.source == "hana":
+        if entity_set:
+            raise RecipeValidationError(
+                "HANA inspection uses --schema and --object, not --entity-set"
+            )
+        _inspect_hana(
+            config,
+            schema=schema,
+            object_name=object_name,
+            include_system=include_system,
+            as_json=as_json,
+        )
+        return
+
+    if schema or object_name or include_system:
+        raise RecipeValidationError(
+            "OData inspection uses --entity-set; "
+            "--schema, --object, and --include-system are HANA-only"
+        )
     service = config.odata_service
     async with httpx.AsyncClient(
         auth=service.authentication(),
@@ -347,7 +481,16 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
     try:
         config = load_config(arguments.config)
         if arguments.command == "inspect":
-            asyncio.run(_inspect(config, entity_set=arguments.entity_set, as_json=arguments.json))
+            asyncio.run(
+                _inspect(
+                    config,
+                    entity_set=arguments.entity_set,
+                    schema=arguments.schema,
+                    object_name=arguments.object,
+                    include_system=arguments.include_system,
+                    as_json=arguments.json,
+                )
+            )
         elif arguments.command == "sync":
             asyncio.run(_sync(config, force_full=arguments.force_full))
         elif arguments.command == "checkpoint":

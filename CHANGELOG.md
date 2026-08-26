@@ -14,6 +14,8 @@ still evolving.
 - Bounded retries with jitter and `Retry-After` support for transient OData failures.
 - TOML-driven HANA snapshot synchronization through the main `sap-knowledge sync`
   command.
+- HANA schema, object, and column catalog inspection through the main
+  `sap-knowledge inspect` command.
 
 ### Security
 

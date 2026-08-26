@@ -17,6 +17,7 @@ from sap_knowledge.cli import (
 from sap_knowledge.configuration import load_config
 from sap_knowledge.models import SourcePage, SourceRecord
 from sap_knowledge.recipes import BUSINESS_PARTNER
+from sap_knowledge.sources.hana import HanaColumn, HanaObject
 from sap_knowledge.sources.odata import ODataVersion
 from sap_knowledge.sources.odata.metadata import (
     EntitySetDefinition,
@@ -303,3 +304,142 @@ def test_hana_sync_rejects_force_full_flag(tmp_path: Path) -> None:
     write_hana_config(config_path)
 
     assert run_cli(("--config", str(config_path), "sync", "--force-full")) == 1
+
+
+def test_hana_inspect_lists_schemas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+
+    class FakeCatalog:
+        def schemas(self, *, include_system: bool = False) -> tuple[str, ...]:
+            assert include_system is False
+            return ("RAG_READ",)
+
+    class FakeHanaClient:
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            assert kwargs["password"] == "secret"
+            return cls()
+
+        def catalog(self) -> FakeCatalog:
+            return FakeCatalog()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert run_cli(("--config", str(config_path), "inspect")) == 0
+
+    output = capsys.readouterr().out
+    assert "HANA catalog" in output
+    assert "RAG_READ" in output
+    assert "secret" not in output
+
+
+def test_hana_inspect_object_columns_as_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+
+    class FakeCatalog:
+        def columns(self, schema: str, object_name: str) -> tuple[HanaColumn, ...]:
+            assert schema == "RAG_READ"
+            assert object_name == "BP"
+            return (
+                HanaColumn(
+                    name="BusinessPartner",
+                    position=1,
+                    data_type="NVARCHAR",
+                    length=10,
+                    scale=None,
+                    nullable=False,
+                ),
+            )
+
+    class FakeHanaClient:
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            return cls()
+
+        def catalog(self) -> FakeCatalog:
+            return FakeCatalog()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert (
+        run_cli(
+            (
+                "--config",
+                str(config_path),
+                "inspect",
+                "--schema",
+                "RAG_READ",
+                "--object",
+                "BP",
+                "--json",
+            )
+        )
+        == 0
+    )
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["source"] == "hana"
+    assert data["schema"] == "RAG_READ"
+    assert data["object"] == "BP"
+    assert data["columns"][0]["name"] == "BusinessPartner"
+
+
+def test_hana_inspect_rejects_object_without_schema(tmp_path: Path) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+
+    assert run_cli(("--config", str(config_path), "inspect", "--object", "BP")) == 1
+
+
+def test_hana_inspect_lists_schema_objects_as_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+
+    class FakeCatalog:
+        def objects(self, schema: str) -> tuple[HanaObject, ...]:
+            assert schema == "RAG_READ"
+            return (HanaObject(schema="RAG_READ", name="BP", kind="VIEW"),)
+
+    class FakeHanaClient:
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            return cls()
+
+        def catalog(self) -> FakeCatalog:
+            return FakeCatalog()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert run_cli(("--config", str(config_path), "inspect", "--schema", "RAG_READ", "--json")) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["objects"] == [{"schema": "RAG_READ", "name": "BP", "kind": "VIEW"}]
