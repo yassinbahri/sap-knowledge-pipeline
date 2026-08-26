@@ -287,9 +287,9 @@ def test_hana_sync_command_runs_config_to_jsonl(
     result = json.loads(capsys.readouterr().out)
     events = [
         json.loads(line)
-        for line in (tmp_path / "data" / "hana-events.jsonl").read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in (tmp_path / "data" / "hana-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
 
     assert result["upserts"] == 1
