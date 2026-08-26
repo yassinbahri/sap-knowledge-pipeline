@@ -24,3 +24,14 @@ least-privilege technical users, approved field allow-lists, protected
 checkpoint and event storage, and application-level authorization when
 retrieving indexed content. HANA ingestion principals should have `SELECT`
 only on curated views whenever possible.
+
+## Error redaction
+
+Package-facing HANA connection and query execution errors do not echo
+passwords or SQL parameter values. OData CLI HTTP diagnostics remove URL
+credentials, query strings, response bodies, and authorization headers from the
+message printed to stderr.
+
+Applications should still avoid logging raw upstream SDK exceptions,
+environment variables, full request objects, connection strings, checkpoints,
+or event files unless those logs are protected as sensitive data.

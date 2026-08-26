@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -40,6 +42,12 @@ class FakeCursor:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FailingCursor(FakeCursor):
+    def execute(self, operation: str, parameters: Sequence[Any] = ()) -> None:
+        self.executed = (operation, parameters)
+        raise RuntimeError(f"database rejected parameters {parameters!r}")
 
 
 class FakeConnection:
@@ -123,6 +131,54 @@ def test_hana_result_requires_unique_columns_and_business_keys() -> None:
     null_key = FakeCursor(columns=("ID", "NAME"), rows=((None, "Pump"),))
     with pytest.raises(HanaQueryError, match="null business-key"):
         list(HanaClient(FakeConnection(null_key)).pages(dataset()))
+
+
+def test_hana_query_errors_do_not_expose_parameter_values() -> None:
+    secret = "TOP-SECRET-COMPANY-CODE"
+    unsafe_dataset = HanaDataset(
+        name="PRODUCT_KNOWLEDGE",
+        statement='SELECT "ID" FROM "RAG_READ"."PRODUCT_KNOWLEDGE" WHERE "SECRET" = ?',
+        key_fields=("ID",),
+        parameters=(secret,),
+    )
+
+    with pytest.raises(HanaQueryError) as captured:
+        list(HanaClient(FakeConnection(FailingCursor())).pages(unsafe_dataset))
+
+    message = str(captured.value)
+    assert secret not in message
+    assert "<redacted>" in message
+    assert "1 parameter(s)" in message
+    assert captured.value.__cause__ is None
+
+
+def test_hana_connection_errors_do_not_expose_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    password = "super-secret-password"
+
+    def connect(**kwargs: object) -> object:
+        raise RuntimeError(f"could not authenticate with {kwargs!r}")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "hdbcli",
+        SimpleNamespace(dbapi=SimpleNamespace(connect=connect)),
+    )
+
+    with pytest.raises(HanaQueryError) as captured:
+        HanaClient.connect(
+            address="hana.example.test",
+            port=443,
+            user="RAG_READ",
+            password=password,
+        )
+
+    message = str(captured.value)
+    assert password not in message
+    assert "hana.example.test:443" in message
+    assert "RAG_READ" in message
+    assert captured.value.__cause__ is None
 
 
 def test_hana_client_closes_only_connections_it_owns() -> None:

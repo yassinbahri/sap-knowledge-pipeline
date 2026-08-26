@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self
 
 from sap_knowledge.errors import HanaQueryError, OptionalDependencyError
 from sap_knowledge.models import SourcePage, SourceRecord
+from sap_knowledge.redaction import redacted_values
 
 if TYPE_CHECKING:
     from sap_knowledge.sources.hana.catalog import HanaCatalog
@@ -89,15 +90,20 @@ class HanaClient:
                 "SAP HANA support is not installed; use `pip install sap-knowledge-pipeline[hana]`"
             ) from exc
 
-        connection = dbapi.connect(
-            address=address,
-            port=port,
-            user=user,
-            password=password,
-            encrypt=True,
-            sslValidateCertificate=True,
-            connecttimeout=connect_timeout_ms,
-        )
+        try:
+            connection = dbapi.connect(
+                address=address,
+                port=port,
+                user=user,
+                password=password,
+                encrypt=True,
+                sslValidateCertificate=True,
+                connecttimeout=connect_timeout_ms,
+            )
+        except Exception:
+            raise HanaQueryError(
+                f"could not connect to HANA at {address}:{port} as {user!r}"
+            ) from None
         return cls(connection, owns_connection=True)
 
     def __enter__(self) -> Self:
@@ -132,7 +138,15 @@ class HanaClient:
 
         cursor = self.connection.cursor()
         try:
-            cursor.execute(dataset.statement, dataset.parameters)
+            try:
+                cursor.execute(dataset.statement, dataset.parameters)
+            except Exception:
+                raise HanaQueryError(
+                    "HANA SELECT execution failed "
+                    f"for dataset {dataset.name!r} "
+                    f"with {len(dataset.parameters)} parameter(s) "
+                    f"{redacted_values(dataset.parameters)!r}"
+                ) from None
             columns = _column_names(cursor.description)
             missing_keys = set(dataset.key_fields) - set(columns)
             if missing_keys:

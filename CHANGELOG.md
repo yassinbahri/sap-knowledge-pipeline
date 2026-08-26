@@ -16,6 +16,8 @@ still evolving.
 ### Security
 
 - CLI HTTP diagnostics now remove URL credentials, query strings, and response bodies.
+- HANA connection and query execution errors now avoid echoing passwords or SQL parameter
+  values in package-facing exception messages.
 
 ## [0.1.0a1] - 2026-08-01
 
