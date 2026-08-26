@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import tomllib
 from pathlib import Path
-from typing import Self
+from typing import Any, Literal, Self
 from urllib.parse import urlsplit
 
 import httpx
@@ -15,6 +15,7 @@ from sap_knowledge.errors import ConfigurationError
 from sap_knowledge.knowledge import CharacterChunker
 from sap_knowledge.knowledge.recipes import KnowledgeRecipe
 from sap_knowledge.recipes import BUILTIN_RECIPES
+from sap_knowledge.sources.hana import HanaDataset
 from sap_knowledge.sources.odata import ODataVersion
 
 
@@ -108,6 +109,39 @@ class PipelineSettings(BaseModel):
         )
 
 
+class HanaSettings(BaseModel):
+    """HANA connection and explicit snapshot dataset settings."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    address: str = Field(min_length=1)
+    port: int = Field(default=443, gt=0, le=65535)
+    user_env: str = Field(min_length=1)
+    password_env: str = Field(min_length=1)
+    dataset_name: str = Field(min_length=1)
+    statement: str = Field(min_length=1)
+    key_fields: tuple[str, ...] = Field(min_length=1)
+    parameters: tuple[Any, ...] = ()
+    page_size: int = Field(default=500, gt=0, le=10_000)
+    connect_timeout_ms: int = Field(default=15_000, gt=0, le=300_000)
+
+    def dataset(self) -> HanaDataset:
+        return HanaDataset(
+            name=self.dataset_name,
+            statement=self.statement,
+            key_fields=self.key_fields,
+            parameters=self.parameters,
+        )
+
+    @property
+    def user(self) -> str:
+        return _required_environment(self.user_env)
+
+    @property
+    def password(self) -> str:
+        return _required_environment(self.password_env)
+
+
 class VectorSettings(BaseModel):
     """Local embedding model and persistent Qdrant settings."""
 
@@ -133,9 +167,37 @@ class AppConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    service: ServiceSettings
+    source: Literal["odata", "hana"] = "odata"
+    service: ServiceSettings | None = None
+    hana: HanaSettings | None = None
     pipeline: PipelineSettings = Field(default_factory=PipelineSettings)
     vector: VectorSettings | None = None
+
+    @model_validator(mode="after")
+    def validate_source_settings(self) -> Self:
+        if self.source == "odata":
+            if self.service is None:
+                raise ValueError("service settings are required when source is 'odata'")
+            if self.hana is not None:
+                raise ValueError("hana settings cannot be configured when source is 'odata'")
+        else:
+            if self.hana is None:
+                raise ValueError("hana settings are required when source is 'hana'")
+            if self.service is not None:
+                raise ValueError("service settings cannot be configured when source is 'hana'")
+        return self
+
+    @property
+    def odata_service(self) -> ServiceSettings:
+        if self.service is None:
+            raise ConfigurationError("command requires an OData [service] configuration")
+        return self.service
+
+    @property
+    def hana_source(self) -> HanaSettings:
+        if self.hana is None:
+            raise ConfigurationError("command requires a HANA [hana] configuration")
+        return self.hana
 
 
 def _required_environment(name: str) -> str:

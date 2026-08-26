@@ -82,7 +82,8 @@ and deletion tracking remain future work.
 
 ## Known limitations
 
-- HANA is currently a Python API; the TOML CLI commands target OData.
+- HANA snapshot synchronization is available from the TOML CLI, while HANA
+  catalog inspection is still Python API-only.
 - HANA synchronization is snapshot-only and does not reconcile deleted rows.
 - The package does not infer SAP module semantics, authorization scope, or safe
   fields from table names.
@@ -313,6 +314,21 @@ Snapshot events have deterministic IDs, so rerunning the same approved query
 upserts the same documents. This initial implementation does not yet detect
 rows that disappeared between snapshots; incremental cursors and deletion
 reconciliation are still required for production synchronization.
+
+You can also run a HANA snapshot through the same CLI event writer. Copy
+`sap-hana.example.toml`, set the HANA credentials in the process environment,
+and run `sync`:
+
+```powershell
+Copy-Item sap-hana.example.toml sap-hana.toml
+$env:SAP_HANA_USER = "your-read-only-user"
+$env:SAP_HANA_PASSWORD = "your-password"
+sap-knowledge --config sap-hana.toml sync
+```
+
+The `[hana]` section stores environment-variable names, dataset identity, one
+explicit `SELECT`, key fields, optional parameters, and page size. It must not
+contain literal passwords.
 
 ### SAP module coverage
 

@@ -20,10 +20,12 @@ from sap_knowledge.errors import RecipeValidationError, SapKnowledgeError
 from sap_knowledge.integrations.fastembed import FastEmbedder
 from sap_knowledge.integrations.qdrant import QdrantKnowledgeIndex
 from sap_knowledge.knowledge.recipes import KnowledgeRecipe
+from sap_knowledge.sources.hana import HanaClient
 from sap_knowledge.sources.odata import ODataClient
 from sap_knowledge.sources.odata.metadata import ServiceMetadata
 from sap_knowledge.sync import (
     FileCheckpointStore,
+    HanaSnapshotKnowledgePipeline,
     JsonlEventSink,
     ODataKnowledgePipeline,
     SyncEvent,
@@ -106,13 +108,14 @@ def _parse_filters(values: Sequence[str]) -> dict[str, str | tuple[str, ...]]:
 
 
 def _source(config: AppConfig, http: httpx.AsyncClient) -> ODataClient:
+    service = config.odata_service
     return ODataClient(
-        service_root=config.service.root,
-        version=config.service.version,
+        service_root=service.root,
+        version=service.version,
         http=http,
-        max_retries=config.service.max_retries,
-        retry_backoff_seconds=config.service.retry_backoff_seconds,
-        max_retry_delay_seconds=config.service.max_retry_delay_seconds,
+        max_retries=service.max_retries,
+        retry_backoff_seconds=service.retry_backoff_seconds,
+        max_retry_delay_seconds=service.max_retry_delay_seconds,
     )
 
 
@@ -180,10 +183,11 @@ def _metadata_data(metadata: ServiceMetadata, entity_set: str | None) -> dict[st
 
 
 async def _inspect(config: AppConfig, *, entity_set: str | None, as_json: bool) -> None:
+    service = config.odata_service
     async with httpx.AsyncClient(
-        auth=config.service.authentication(),
-        headers=config.service.headers(),
-        timeout=config.service.timeout_seconds,
+        auth=service.authentication(),
+        headers=service.headers(),
+        timeout=service.timeout_seconds,
     ) as http:
         metadata = await _source(config, http).metadata()
 
@@ -200,22 +204,49 @@ async def _inspect(config: AppConfig, *, entity_set: str | None, as_json: bool) 
 
 async def _sync(config: AppConfig, *, force_full: bool) -> None:
     recipe = config.pipeline.knowledge_recipe()
+    if config.source == "hana":
+        if force_full:
+            raise RecipeValidationError("HANA snapshot synchronization is always full")
+        hana = config.hana_source
+        dataset = hana.dataset()
+        hana_pipeline = HanaSnapshotKnowledgePipeline(
+            source=HanaClient.connect(
+                address=hana.address,
+                port=hana.port,
+                user=hana.user,
+                password=hana.password,
+                connect_timeout_ms=hana.connect_timeout_ms,
+            ),
+            dataset=dataset,
+            recipe=recipe,
+            sink=JsonlEventSink(config.pipeline.events_path),
+            page_size=hana.page_size,
+            chunker=config.pipeline.chunker(),
+        )
+        try:
+            result = await hana_pipeline.run()
+        finally:
+            hana_pipeline.source.close()
+        print(result.model_dump_json(indent=2))
+        return
+
+    service = config.odata_service
     async with httpx.AsyncClient(
-        auth=config.service.authentication(),
-        headers=config.service.headers(),
-        timeout=config.service.timeout_seconds,
+        auth=service.authentication(),
+        headers=service.headers(),
+        timeout=service.timeout_seconds,
     ) as http:
         source = _source(config, http)
         metadata = await source.metadata()
         _validate_recipe(metadata, recipe)
-        pipeline = ODataKnowledgePipeline(
+        odata_pipeline = ODataKnowledgePipeline(
             source=source,
             recipe=recipe,
             sink=JsonlEventSink(config.pipeline.events_path),
             checkpoints=FileCheckpointStore(config.pipeline.checkpoint_path),
             chunker=config.pipeline.chunker(),
         )
-        result = await pipeline.run(force_full=force_full)
+        result = await odata_pipeline.run(force_full=force_full)
     print(result.model_dump_json(indent=2, exclude={"checkpoint"}))
 
 

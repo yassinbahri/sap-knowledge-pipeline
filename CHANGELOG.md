@@ -12,6 +12,8 @@ still evolving.
 - Qdrant metadata filters and repeatable CLI `--filter KEY=VALUE` options for scoped search and
   grounded prompts.
 - Bounded retries with jitter and `Retry-After` support for transient OData failures.
+- TOML-driven HANA snapshot synchronization through the main `sap-knowledge sync`
+  command.
 
 ### Security
 

@@ -1,0 +1,31 @@
+source = "hana"
+
+[hana]
+address = "your-host.hanacloud.ondemand.com"
+port = 443
+user_env = "SAP_HANA_USER"
+password_env = "SAP_HANA_PASSWORD"
+dataset_name = "A_BusinessPartner"
+statement = """
+SELECT
+  "BusinessPartner",
+  "BusinessPartnerFullName",
+  "BusinessPartnerCategory",
+  "BusinessPartnerGrouping",
+  "SearchTerm1",
+  "SearchTerm2"
+FROM "RAG_READ"."BUSINESS_PARTNER_KNOWLEDGE"
+WHERE "IS_ACTIVE" = ?
+ORDER BY "BusinessPartner"
+"""
+key_fields = ["BusinessPartner"]
+parameters = [true]
+page_size = 500
+connect_timeout_ms = 15000
+
+[pipeline]
+recipe = "business_partner"
+events_path = "data/hana-business-partner-events.jsonl"
+checkpoint_path = "state/hana-business-partner.json"
+max_characters = 1200
+overlap_characters = 120

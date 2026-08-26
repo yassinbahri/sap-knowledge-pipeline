@@ -143,3 +143,67 @@ api_key_header = "APIKey"
 
     assert config.service.authentication() is None
     assert config.service.headers() == {"APIKey": "secret-api-key"}
+
+
+def test_load_hana_config_resolves_dataset_from_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "hana.toml"
+    path.write_text(
+        """
+source = "hana"
+
+[hana]
+address = "hana.example.test"
+port = 443
+user_env = "TEST_HANA_USER"
+password_env = "TEST_HANA_PASSWORD"
+dataset_name = "A_BusinessPartner"
+statement = "SELECT BusinessPartner, BusinessPartnerFullName FROM RAG_READ.BP"
+key_fields = ["BusinessPartner"]
+parameters = ["1000"]
+page_size = 250
+
+[pipeline]
+recipe = "business_partner"
+events_path = "data/hana-events.jsonl"
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+
+    config = load_config(path)
+
+    assert config.source == "hana"
+    assert config.hana_source.user == "RAG_READ"
+    assert config.hana_source.password == "secret"
+    assert config.hana_source.dataset().parameters == ("1000",)
+    assert config.hana_source.page_size == 250
+    assert config.pipeline.events_path == path.parent / "data" / "hana-events.jsonl"
+
+
+def test_config_rejects_mixed_odata_and_hana_sources(tmp_path: Path) -> None:
+    path = tmp_path / "mixed.toml"
+    path.write_text(
+        """
+source = "hana"
+
+[service]
+root = "https://sap.example.test/odata/"
+version = "2"
+
+[hana]
+address = "hana.example.test"
+user_env = "TEST_HANA_USER"
+password_env = "TEST_HANA_PASSWORD"
+dataset_name = "A_BusinessPartner"
+statement = "SELECT BusinessPartner FROM RAG_READ.BP"
+key_fields = ["BusinessPartner"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="service settings cannot"):
+        load_config(path)

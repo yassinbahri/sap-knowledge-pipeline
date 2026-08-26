@@ -15,6 +15,7 @@ from sap_knowledge.cli import (
     run_cli,
 )
 from sap_knowledge.configuration import load_config
+from sap_knowledge.models import SourcePage, SourceRecord
 from sap_knowledge.recipes import BUSINESS_PARTNER
 from sap_knowledge.sources.odata import ODataVersion
 from sap_knowledge.sources.odata.metadata import (
@@ -57,6 +58,30 @@ version = "2"
 
 [pipeline]
 checkpoint_path = "checkpoint.json"
+""".strip(),
+        encoding="utf-8",
+    )
+
+
+def write_hana_config(path: Path) -> None:
+    path.write_text(
+        """
+source = "hana"
+
+[hana]
+address = "hana.example.test"
+port = 443
+user_env = "TEST_HANA_USER"
+password_env = "TEST_HANA_PASSWORD"
+dataset_name = "A_BusinessPartner"
+statement = "SELECT BusinessPartner, BusinessPartnerFullName FROM RAG_READ.BP"
+key_fields = ["BusinessPartner"]
+parameters = ["1000"]
+page_size = 100
+
+[pipeline]
+recipe = "business_partner"
+events_path = "data/hana-events.jsonl"
 """.strip(),
         encoding="utf-8",
     )
@@ -207,3 +232,74 @@ def test_sync_command_runs_config_to_jsonl_and_checkpoint(
     assert checkpoint is not None and checkpoint.complete is True
     assert requests[0].url.path.endswith("/$metadata")
     assert requests[1].url.params["$select"].startswith("BusinessPartner,")
+
+
+def test_hana_sync_command_runs_config_to_jsonl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+    connections: list[object] = []
+
+    class FakeHanaClient:
+        def __init__(self) -> None:
+            self.closed = False
+
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            assert kwargs["address"] == "hana.example.test"
+            assert kwargs["user"] == "RAG_READ"
+            assert kwargs["password"] == "secret"
+            connection = cls()
+            connections.append(connection)
+            return connection
+
+        def pages(self, dataset: object, *, page_size: int) -> list[SourcePage]:
+            assert page_size == 100
+            return [
+                SourcePage(
+                    records=(
+                        SourceRecord(
+                            source_type="hana",
+                            entity_set="A_BusinessPartner",
+                            key={"BusinessPartner": "1000001"},
+                            data={
+                                "BusinessPartner": "1000001",
+                                "BusinessPartnerFullName": "Northwind Components",
+                                "BusinessPartnerCategory": "2",
+                            },
+                        ),
+                    )
+                )
+            ]
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert run_cli(("--config", str(config_path), "sync")) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "data" / "hana-events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+
+    assert result["upserts"] == 1
+    assert events[0]["citation"]["source_type"] == "hana"
+    assert events[0]["citation"]["entity_set"] == "A_BusinessPartner"
+    assert connections and connections[0].closed is True
+
+
+def test_hana_sync_rejects_force_full_flag(tmp_path: Path) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+
+    assert run_cli(("--config", str(config_path), "sync", "--force-full")) == 1
