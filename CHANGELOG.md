@@ -6,6 +6,8 @@ still evolving.
 
 ## [Unreleased]
 
+## [0.1.0a2] - 2026-08-26
+
 ### Added
 
 - Recipe-controlled retrieval metadata that stays outside embedded document text.
@@ -37,5 +39,6 @@ still evolving.
 - HANA snapshot conversion into the portable knowledge-event format.
 - Python 3.11 through 3.14 support and a fully offline automated test suite.
 
-[Unreleased]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/0.1.0a1...HEAD
+[Unreleased]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a2...HEAD
+[0.1.0a2]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a1...v0.1.0a2
 [0.1.0a1]: https://github.com/yassinbahri/sap-knowledge-pipeline/releases/tag/0.1.0a1
