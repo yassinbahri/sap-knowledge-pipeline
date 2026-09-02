@@ -230,6 +230,66 @@ def test_hana_catalog_discovers_privilege_filtered_metadata() -> None:
     )
 
 
+def test_hana_catalog_handles_empty_accessible_catalog() -> None:
+    schemas = FakeCursor(columns=("SCHEMA_NAME",), rows=())
+    objects = FakeCursor(
+        columns=("SCHEMA_NAME", "OBJECT_NAME", "OBJECT_TYPE"),
+        rows=(),
+    )
+    columns = FakeCursor(
+        columns=(
+            "COLUMN_NAME",
+            "POSITION",
+            "DATA_TYPE_NAME",
+            "LENGTH",
+            "SCALE",
+            "IS_NULLABLE",
+        ),
+        rows=(),
+    )
+    catalog = HanaClient(ScriptedConnection([schemas, objects, columns])).catalog()
+
+    assert catalog.schemas() == ()
+    assert catalog.objects("RAG_READ") == ()
+    assert catalog.columns("RAG_READ", "PRODUCT_KNOWLEDGE") == ()
+
+
+def test_hana_catalog_queries_filter_and_order_accessible_metadata() -> None:
+    schemas = FakeCursor(
+        columns=("SCHEMA_NAME",),
+        rows=(("RAG_READ",), ("SALES_READ",)),
+    )
+    objects = FakeCursor(
+        columns=("SCHEMA_NAME", "OBJECT_NAME", "OBJECT_TYPE"),
+        rows=(
+            ("RAG_READ", "PRODUCTS", "TABLE"),
+            ("RAG_READ", "PRODUCT_KNOWLEDGE", "VIEW"),
+        ),
+    )
+    catalog = HanaClient(ScriptedConnection([schemas, objects])).catalog()
+
+    assert catalog.schemas() == ("RAG_READ", "SALES_READ")
+    assert [item.name for item in catalog.objects("RAG_READ")] == [
+        "PRODUCTS",
+        "PRODUCT_KNOWLEDGE",
+    ]
+
+    assert schemas.executed is not None
+    schema_statement, schema_parameters = schemas.executed
+    assert "\"HAS_PRIVILEGES\" = 'TRUE'" in schema_statement
+    assert "\"SCHEMA_NAME\" <> 'SYS'" in schema_statement
+    assert "\"SCHEMA_NAME\" NOT LIKE '_SYS_%'" in schema_statement
+    assert 'ORDER BY "SCHEMA_NAME"' in schema_statement
+    assert schema_parameters == ()
+
+    assert objects.executed is not None
+    object_statement, object_parameters = objects.executed
+    assert '"SCHEMA_NAME" = ?' in object_statement
+    assert "\"OBJECT_TYPE\" IN ('TABLE', 'VIEW')" in object_statement
+    assert 'ORDER BY "OBJECT_TYPE", "OBJECT_NAME"' in object_statement
+    assert object_parameters == ("RAG_READ",)
+
+
 def test_hana_snapshot_pipeline_writes_portable_events(tmp_path: Path) -> None:
     source = HanaClient(FakeConnection(FakeCursor(rows=(("100", "Pump", "EQUIPMENT"),))))
     recipe = KnowledgeRecipe(
