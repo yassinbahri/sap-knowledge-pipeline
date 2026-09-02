@@ -6,6 +6,16 @@ still evolving.
 
 ## [Unreleased]
 
+### Added
+
+- Metadata-only `validate` preflight for OData recipes and explicitly linked
+  HANA catalog objects.
+
+### Security
+
+- HANA catalog driver failures are translated without exposing query details,
+  parameters, credentials, or provider error text.
+
 ## [0.1.0a2] - 2026-08-26
 
 ### Added

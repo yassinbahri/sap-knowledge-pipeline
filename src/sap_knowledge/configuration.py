@@ -121,9 +121,23 @@ class HanaSettings(BaseModel):
     dataset_name: str = Field(min_length=1)
     statement: str = Field(min_length=1)
     key_fields: tuple[str, ...] = Field(min_length=1)
+    catalog_schema: str | None = Field(default=None, min_length=1)
+    catalog_object: str | None = Field(default=None, min_length=1)
     parameters: tuple[Any, ...] = ()
     page_size: int = Field(default=500, gt=0, le=10_000)
     connect_timeout_ms: int = Field(default=15_000, gt=0, le=300_000)
+
+    @model_validator(mode="after")
+    def validate_catalog_lineage(self) -> Self:
+        if bool(self.catalog_schema) != bool(self.catalog_object):
+            raise ValueError("catalog_schema and catalog_object must be configured together")
+        for label, value in (
+            ("catalog_schema", self.catalog_schema),
+            ("catalog_object", self.catalog_object),
+        ):
+            if value is not None and any(character in value for character in "\r\n\0"):
+                raise ValueError(f"{label} must be single-line")
+        return self
 
     def dataset(self) -> HanaDataset:
         return HanaDataset(

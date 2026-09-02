@@ -95,17 +95,28 @@ class HanaCatalog:
         statement: str,
         parameters: tuple[Any, ...] = (),
     ) -> tuple[tuple[Any, ...], ...]:
-        cursor = self.connection.cursor()
         try:
-            cursor.execute(statement, parameters)
-            if cursor.description is None:
-                raise HanaQueryError("HANA catalog query did not return a result set")
-            rows: list[tuple[Any, ...]] = []
-            while batch := cursor.fetchmany(500):
-                rows.extend(tuple(row) for row in batch)
-            return tuple(rows)
+            cursor = self.connection.cursor()
+        except Exception:
+            raise HanaQueryError("HANA catalog cursor creation failed") from None
+        try:
+            try:
+                cursor.execute(statement, parameters)
+                if cursor.description is None:
+                    raise HanaQueryError("HANA catalog query did not return a result set")
+                rows: list[tuple[Any, ...]] = []
+                while batch := cursor.fetchmany(500):
+                    rows.extend(tuple(row) for row in batch)
+                return tuple(rows)
+            except HanaQueryError:
+                raise
+            except Exception:
+                raise HanaQueryError("HANA catalog metadata query failed") from None
         finally:
-            cursor.close()
+            try:
+                cursor.close()
+            except Exception:
+                raise HanaQueryError("HANA catalog cursor cleanup failed") from None
 
 
 def _nullable(value: Any) -> bool | None:

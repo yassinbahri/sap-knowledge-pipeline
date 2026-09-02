@@ -207,3 +207,27 @@ key_fields = ["BusinessPartner"]
 
     with pytest.raises(ConfigurationError, match="service settings cannot"):
         load_config(path)
+
+
+def test_hana_catalog_lineage_requires_schema_and_object_together(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "hana.toml"
+    path.write_text(
+        """
+source = "hana"
+
+[hana]
+address = "hana.example.test"
+user_env = "TEST_HANA_USER"
+password_env = "TEST_HANA_PASSWORD"
+dataset_name = "A_BusinessPartner"
+statement = "SELECT BusinessPartner FROM RAG_READ.BP"
+key_fields = ["BusinessPartner"]
+catalog_schema = "RAG_READ"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="must be configured together"):
+        load_config(path)

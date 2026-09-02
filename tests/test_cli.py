@@ -77,6 +77,8 @@ password_env = "TEST_HANA_PASSWORD"
 dataset_name = "A_BusinessPartner"
 statement = "SELECT BusinessPartner, BusinessPartnerFullName FROM RAG_READ.BP"
 key_fields = ["BusinessPartner"]
+catalog_schema = "RAG_READ"
+catalog_object = "BP"
 parameters = ["1000"]
 page_size = 100
 
@@ -154,6 +156,61 @@ def test_metadata_validation_and_json_shape() -> None:
     assert data["version"] == "2"
     assert data["entity_sets"][0]["keys"] == ["BusinessPartner"]
     assert json.dumps(data)
+
+
+def test_validate_odata_reads_only_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "sap-knowledge.toml"
+    write_config(config_path)
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path.endswith("/$metadata")
+        return httpx.Response(200, content=BUSINESS_PARTNER_METADATA)
+
+    real_async_client = httpx.AsyncClient
+
+    def mock_client(**kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_async_client(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli_module.httpx, "AsyncClient", mock_client)
+
+    assert run_cli(("--config", str(config_path), "validate", "--json")) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["valid"] is True
+    assert data["source"] == "odata"
+    assert data["metadata_checked"] is True
+    assert [request.url.path for request in requests] == ["/odata/$metadata"]
+
+
+def test_validate_odata_fails_for_missing_recipe_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "sap-knowledge.toml"
+    write_config(config_path)
+    incomplete_metadata = BUSINESS_PARTNER_METADATA.replace(
+        b'<Property Name="BusinessPartnerFullName" Type="Edm.String" />', b""
+    )
+    real_async_client = httpx.AsyncClient
+
+    def mock_client(**kwargs: object) -> httpx.AsyncClient:
+        kwargs["transport"] = httpx.MockTransport(
+            lambda request: httpx.Response(200, content=incomplete_metadata)
+        )
+        return real_async_client(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli_module.httpx, "AsyncClient", mock_client)
+
+    assert run_cli(("--config", str(config_path), "validate")) == 1
+    assert "missing recipe properties" in capsys.readouterr().err
 
 
 def test_metadata_filters_group_repeated_keys_and_reject_invalid_values() -> None:
@@ -297,6 +354,148 @@ def test_hana_sync_command_runs_config_to_jsonl(
     assert events[0]["citation"]["source_type"] == "hana"
     assert events[0]["citation"]["entity_set"] == "A_BusinessPartner"
     assert connections and connections[0].closed is True
+
+
+def test_validate_hana_uses_catalog_without_executing_business_select(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+    clients: list[object] = []
+
+    class FakeCatalog:
+        def columns(self, schema: str, object_name: str) -> tuple[HanaColumn, ...]:
+            assert (schema, object_name) == ("RAG_READ", "BP")
+            return tuple(
+                HanaColumn(
+                    name=name,
+                    position=position,
+                    data_type="NVARCHAR",
+                    length=100,
+                    scale=None,
+                    nullable=True,
+                )
+                for position, name in enumerate(BUSINESS_PARTNER.select_fields, start=1)
+            )
+
+    class FakeHanaClient:
+        def __init__(self) -> None:
+            self.closed = False
+
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            assert kwargs["password"] == "secret"
+            client = cls()
+            clients.append(client)
+            return client
+
+        def catalog(self) -> FakeCatalog:
+            return FakeCatalog()
+
+        def pages(self, *args: object, **kwargs: object) -> None:
+            raise AssertionError("validate must not execute the business SELECT")
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert run_cli(("--config", str(config_path), "validate", "--json")) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["metadata_checked"] is True
+    assert data["catalog_schema"] == "RAG_READ"
+    assert clients and clients[0].closed is True
+
+
+def test_validate_hana_reports_skipped_catalog_check_without_lineage(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    configured = config_path.read_text(encoding="utf-8")
+    configured = configured.replace('catalog_schema = "RAG_READ"\n', "")
+    configured = configured.replace('catalog_object = "BP"\n', "")
+    config_path.write_text(configured, encoding="utf-8")
+
+    assert run_cli(("--config", str(config_path), "validate", "--json")) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["valid"] is True
+    assert data["metadata_checked"] is False
+    assert "not configured" in data["metadata_note"]
+
+
+def test_validate_hana_fails_when_catalog_key_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret")
+
+    class FakeCatalog:
+        def columns(self, schema: str, object_name: str) -> tuple[HanaColumn, ...]:
+            return ()
+
+    class FakeHanaClient:
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            return cls()
+
+        def catalog(self) -> FakeCatalog:
+            return FakeCatalog()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert run_cli(("--config", str(config_path), "validate")) == 1
+    error = capsys.readouterr().err
+    assert "missing recipe key columns: BusinessPartner" in error
+    assert "secret" not in error
+
+
+def test_validate_hana_redacts_unexpected_catalog_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "hana.toml"
+    write_hana_config(config_path)
+    monkeypatch.setenv("TEST_HANA_USER", "RAG_READ")
+    monkeypatch.setenv("TEST_HANA_PASSWORD", "secret-password")
+
+    class FakeCatalog:
+        def columns(self, schema: str, object_name: str) -> tuple[HanaColumn, ...]:
+            raise RuntimeError("driver leaked secret-password and SELECT parameters")
+
+    class FakeHanaClient:
+        @classmethod
+        def connect(cls, **kwargs: object) -> FakeHanaClient:
+            return cls()
+
+        def catalog(self) -> FakeCatalog:
+            return FakeCatalog()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_module, "HanaClient", FakeHanaClient)
+
+    assert run_cli(("--config", str(config_path), "validate")) == 1
+    error = capsys.readouterr().err
+    assert "HANA metadata validation failed" in error
+    assert "secret-password" not in error
+    assert "SELECT" not in error
 
 
 def test_hana_sync_rejects_force_full_flag(tmp_path: Path) -> None:

@@ -16,7 +16,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from sap_knowledge import __version__
 from sap_knowledge.configuration import AppConfig, load_config
-from sap_knowledge.errors import RecipeValidationError, SapKnowledgeError
+from sap_knowledge.errors import HanaQueryError, RecipeValidationError, SapKnowledgeError
 from sap_knowledge.integrations.fastembed import FastEmbedder
 from sap_knowledge.integrations.qdrant import QdrantKnowledgeIndex
 from sap_knowledge.knowledge.recipes import KnowledgeRecipe
@@ -56,6 +56,11 @@ def _parser() -> argparse.ArgumentParser:
         help="For HANA, include system schemas in schema listings",
     )
     inspect.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    validate = commands.add_parser(
+        "validate", help="Validate configuration and source metadata without reading business rows"
+    )
+    validate.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     sync = commands.add_parser("sync", help="Run or resume knowledge synchronization")
     sync.add_argument(
@@ -255,6 +260,99 @@ def _print_hana_catalog(data: dict[str, Any]) -> None:
     print(f"HANA catalog — {len(data['schemas'])} schema(s)")
     for schema in data["schemas"]:
         print(f"- {schema}")
+
+
+def _validate_hana_metadata(config: AppConfig, recipe: KnowledgeRecipe) -> dict[str, Any]:
+    hana = config.hana_source
+    dataset = hana.dataset()
+    if dataset.name != recipe.entity_set:
+        raise RecipeValidationError("HANA dataset_name must match the configured recipe entity set")
+    if dataset.key_fields != recipe.key_fields:
+        raise RecipeValidationError(
+            "HANA dataset key_fields must match the configured recipe key fields"
+        )
+
+    data: dict[str, Any] = {
+        "valid": True,
+        "source": "hana",
+        "recipe": recipe.name,
+        "dataset": dataset.name,
+        "key_fields": list(recipe.key_fields),
+        "selected_fields": list(recipe.select_fields),
+        "metadata_checked": False,
+    }
+    if hana.catalog_schema is None or hana.catalog_object is None:
+        data["metadata_note"] = (
+            "catalog_schema and catalog_object are not configured; "
+            "column compatibility was not checked"
+        )
+        return data
+
+    client = HanaClient.connect(
+        address=hana.address,
+        port=hana.port,
+        user=hana.user,
+        password=hana.password,
+        connect_timeout_ms=hana.connect_timeout_ms,
+    )
+    try:
+        try:
+            columns = client.catalog().columns(hana.catalog_schema, hana.catalog_object)
+        except HanaQueryError:
+            raise
+        except Exception:
+            raise HanaQueryError("HANA metadata validation failed") from None
+    finally:
+        client.close()
+
+    available = {column.name for column in columns}
+    missing_keys = set(recipe.key_fields) - available
+    if missing_keys:
+        names = ", ".join(sorted(missing_keys))
+        raise RecipeValidationError(f"HANA catalog is missing recipe key columns: {names}")
+    missing = set(recipe.select_fields) - available
+    if missing:
+        names = ", ".join(sorted(missing))
+        raise RecipeValidationError(f"HANA catalog is missing recipe columns: {names}")
+
+    data.update(
+        metadata_checked=True,
+        catalog_schema=hana.catalog_schema,
+        catalog_object=hana.catalog_object,
+    )
+    return data
+
+
+async def _validate(config: AppConfig, *, as_json: bool) -> None:
+    recipe = config.pipeline.knowledge_recipe()
+    if config.source == "hana":
+        data = _validate_hana_metadata(config, recipe)
+    else:
+        service = config.odata_service
+        async with httpx.AsyncClient(
+            auth=service.authentication(),
+            headers=service.headers(),
+            timeout=service.timeout_seconds,
+        ) as http:
+            metadata = await _source(config, http).metadata()
+        _validate_recipe(metadata, recipe)
+        data = {
+            "valid": True,
+            "source": "odata",
+            "recipe": recipe.name,
+            "entity_set": recipe.entity_set,
+            "key_fields": list(recipe.key_fields),
+            "selected_fields": list(recipe.select_fields),
+            "metadata_checked": True,
+        }
+
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return
+    checked = "metadata checked" if data["metadata_checked"] else "metadata check skipped"
+    print(f"Valid {data['source'].upper()} configuration for recipe {recipe.name!r} ({checked}).")
+    if note := data.get("metadata_note"):
+        print(f"Note: {note}.")
 
 
 def _inspect_hana(
@@ -491,6 +589,8 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                     as_json=arguments.json,
                 )
             )
+        elif arguments.command == "validate":
+            asyncio.run(_validate(config, as_json=arguments.json))
         elif arguments.command == "sync":
             asyncio.run(_sync(config, force_full=arguments.force_full))
         elif arguments.command == "checkpoint":
