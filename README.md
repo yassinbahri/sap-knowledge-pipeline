@@ -420,6 +420,26 @@ sap-knowledge --config sap-hana.toml inspect --schema RAG_READ
 sap-knowledge --config sap-hana.toml inspect --schema RAG_READ --object PRODUCT_KNOWLEDGE --json
 ```
 
+Validate configuration and source metadata before reading any business rows or
+writing events:
+
+```console
+sap-knowledge --config sap-knowledge.toml validate
+sap-knowledge --config sap-knowledge.toml validate --json
+```
+
+For OData, `validate` requests only the service `$metadata` document and checks
+the configured recipe's entity set, keys, and selected properties. For HANA,
+set both `catalog_schema` and `catalog_object` to check the recipe fields against
+privilege-filtered catalog columns. Without those explicit lineage values, HANA
+validation still checks configuration, recipe, dataset, and key invariants but
+reports that column compatibility was not checked. It never executes the
+configured business-row `SELECT`.
+
+Validation proves compatibility with metadata visible at that moment. It does
+not prove authorization for every future row or guarantee that source metadata
+will remain unchanged.
+
 Run or resume synchronization:
 
 ```console

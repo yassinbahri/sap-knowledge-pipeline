@@ -254,6 +254,23 @@ def test_hana_catalog_handles_empty_accessible_catalog() -> None:
     assert catalog.columns("RAG_READ", "PRODUCT_KNOWLEDGE") == ()
 
 
+def test_hana_catalog_errors_do_not_expose_driver_details() -> None:
+    secret = "TOP-SECRET-CATALOG-VALUE"
+
+    class SecretFailingCursor(FakeCursor):
+        def execute(self, operation: str, parameters: Sequence[Any] = ()) -> None:
+            raise RuntimeError(f"catalog provider leaked {secret}")
+
+    catalog = HanaClient(FakeConnection(SecretFailingCursor())).catalog()
+
+    with pytest.raises(HanaQueryError) as captured:
+        catalog.schemas()
+
+    assert str(captured.value) == "HANA catalog metadata query failed"
+    assert secret not in str(captured.value)
+    assert captured.value.__cause__ is None
+
+
 def test_hana_catalog_queries_filter_and_order_accessible_metadata() -> None:
     schemas = FakeCursor(
         columns=("SCHEMA_NAME",),

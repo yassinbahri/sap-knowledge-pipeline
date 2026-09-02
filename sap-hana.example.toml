@@ -19,6 +19,10 @@ WHERE "IS_ACTIVE" = ?
 ORDER BY "BusinessPartner"
 """
 key_fields = ["BusinessPartner"]
+# Optional explicit lineage used by `sap-knowledge validate` for a metadata-only
+# column compatibility check. Both values must be configured together.
+catalog_schema = "RAG_READ"
+catalog_object = "BUSINESS_PARTNER_KNOWLEDGE"
 parameters = [true]
 page_size = 500
 connect_timeout_ms = 15000
