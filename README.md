@@ -518,6 +518,29 @@ These filters are an enforcement building block, not an identity or authorizatio
 application must derive filter values from a trusted authenticated identity and must never accept
 tenant, company-code, or role filters directly from an untrusted user request.
 
+### Evaluate citation and scope integrity offline
+
+Use the provider-neutral evaluation helper with synthetic fixtures before connecting production
+SAP data. It verifies that every returned hit retains its document citation and that scalar or
+multi-valued metadata remains inside trusted scopes:
+
+```python
+from sap_knowledge.vector import evaluate_retrieval
+
+report = evaluate_retrieval(
+    hits,
+    allowed_scopes={
+        "sap_company_code": {"1000"},
+        "security_roles": {"MAINTENANCE"},
+    },
+)
+assert report.passed, (report.missing_citations, report.scope_leaks)
+```
+
+Run the bundled multi-company synthetic evaluation with
+`pytest tests/test_retrieval_evaluation.py`. Adapt its metadata keys and allowed values to the
+fields mapped by your own SAP module recipe; never derive the allowed values from user input.
+
 For a source checkout:
 
 ```console
