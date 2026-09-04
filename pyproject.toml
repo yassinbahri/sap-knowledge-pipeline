@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sap-knowledge-pipeline"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "Turn SAP OData and HANA records into secure, citation-ready knowledge for RAG."
 readme = "README.md"
 requires-python = ">=3.11"

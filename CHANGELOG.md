@@ -6,6 +6,8 @@ still evolving.
 
 ## [Unreleased]
 
+## [0.1.0a3] - 2026-09-04
+
 ### Added
 
 - Metadata-only `validate` preflight for OData recipes and explicitly linked
