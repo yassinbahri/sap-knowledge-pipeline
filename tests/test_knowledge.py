@@ -6,9 +6,11 @@ from sap_knowledge.errors import RecipeValidationError
 from sap_knowledge.knowledge import (
     CharacterChunker,
     FieldMapping,
+    HashTransform,
     KnowledgeRecipe,
     KnowledgeRenderer,
     MetadataMapping,
+    ValueMapTransform,
     document_id_for,
 )
 from sap_knowledge.models import SourceRecord
@@ -182,3 +184,40 @@ def test_recipe_select_fields_are_minimal_and_ordered() -> None:
         "CompanyCode",
         "AllowedRoles",
     )
+
+
+def test_recipe_transform_configuration_is_validated_and_serializable() -> None:
+    configured = recipe().model_copy(
+        update={
+            "transforms": (
+                HashTransform(field="CompanyCode"),
+                ValueMapTransform(
+                    field="Active",
+                    values={"true": "active", "false": "inactive"},
+                ),
+            )
+        }
+    )
+
+    restored = KnowledgeRecipe.model_validate_json(configured.model_dump_json())
+
+    assert restored == configured
+    assert restored.model_dump(mode="json")["transforms"][0]["kind"] == "sha256"
+
+
+def test_recipe_rejects_duplicate_or_unapproved_transform_fields() -> None:
+    for transforms, message in (
+        (
+            (HashTransform(field="Name"), HashTransform(field="Name")),
+            "transform fields must be unique",
+        ),
+        ((HashTransform(field="InternalMargin"),), "explicitly allowed fields"),
+    ):
+        try:
+            recipe().model_copy(update={"transforms": transforms}).model_validate(
+                recipe().model_copy(update={"transforms": transforms}).model_dump()
+            )
+        except ValidationError as exc:
+            assert message in str(exc)
+        else:
+            raise AssertionError("unsafe transform configuration should be rejected")
