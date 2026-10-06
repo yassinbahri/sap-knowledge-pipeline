@@ -138,7 +138,9 @@ class KnowledgeRenderer:
             source_type=record.source_type,
             entity_set=record.entity_set,
             key=safe_key,
-            source_url=None if transformed_fields.intersection(recipe.key_fields) else source_url,
+            # A URL can contain business values in path or query components. It
+            # cannot be scrubbed reliably without source-specific knowledge.
+            source_url=None if transformed_fields else source_url,
             etag=record.etag,
         )
         return KnowledgeDocument(

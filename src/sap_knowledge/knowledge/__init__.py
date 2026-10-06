@@ -4,6 +4,7 @@ from sap_knowledge.knowledge.chunking import CharacterChunker
 from sap_knowledge.knowledge.models import Citation, KnowledgeChunk, KnowledgeDocument
 from sap_knowledge.knowledge.recipes import FieldMapping, KnowledgeRecipe, MetadataMapping
 from sap_knowledge.knowledge.rendering import KnowledgeRenderer, document_id_for
+from sap_knowledge.knowledge.transformation import FieldTransformer, TransformerRegistry
 from sap_knowledge.knowledge.transforms import (
     CustomTransform,
     DateTransform,
@@ -20,6 +21,7 @@ __all__ = [
     "DateTransform",
     "FieldMapping",
     "FieldTransform",
+    "FieldTransformer",
     "HashTransform",
     "KnowledgeChunk",
     "KnowledgeDocument",
@@ -27,6 +29,7 @@ __all__ = [
     "KnowledgeRenderer",
     "MaskTransform",
     "MetadataMapping",
+    "TransformerRegistry",
     "ValueMapTransform",
     "document_id_for",
 ]

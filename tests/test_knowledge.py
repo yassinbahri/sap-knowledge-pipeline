@@ -290,3 +290,27 @@ def test_custom_transform_runs_once_and_is_reused_across_outputs() -> None:
     assert calls == ["secret-company"]
     assert document.metadata["sap_company_code"] == "classified"
     assert "secret-company" not in document.model_dump_json()
+
+
+def test_renderer_omits_unverifiable_source_url_for_any_transformed_field() -> None:
+    secured_recipe = recipe().model_copy(
+        update={"transforms": (HashTransform(field="Description"),)}
+    )
+    record = SourceRecord(
+        entity_set="Products",
+        key={"ID": "1"},
+        data={
+            "Name": "Pump",
+            "Description": "sensitive",
+            "CompanyCode": "1000",
+        },
+    )
+
+    document = KnowledgeRenderer().render(
+        record,
+        secured_recipe,
+        source_url="https://sap.example.test/Products('1')?note=sensitive",
+    )
+
+    assert document.citation.source_url is None
+    assert "sensitive" not in document.model_dump_json()
