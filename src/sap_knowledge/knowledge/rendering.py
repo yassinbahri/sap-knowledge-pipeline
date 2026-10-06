@@ -12,6 +12,7 @@ from typing import Any
 from sap_knowledge.errors import RecipeValidationError
 from sap_knowledge.knowledge.models import Citation, KnowledgeDocument
 from sap_knowledge.knowledge.recipes import KnowledgeRecipe
+from sap_knowledge.knowledge.transformation import TransformerRegistry, transform_value
 from sap_knowledge.models import SourceRecord
 
 
@@ -60,6 +61,9 @@ def document_id_for(
 class KnowledgeRenderer:
     """Render only recipe-approved properties from a canonical source record."""
 
+    def __init__(self, *, transformers: TransformerRegistry | None = None) -> None:
+        self.transformers = dict(transformers or {})
+
     def render(
         self,
         record: SourceRecord,
@@ -77,10 +81,26 @@ class KnowledgeRenderer:
             missing = ", ".join(missing_keys)
             raise RecipeValidationError(f"record is missing recipe key fields: {missing}")
 
+        allowed_values = {
+            field: record.data.get(field)
+            for field in recipe.select_fields
+        }
+        allowed_values.update(record.key)
+        transformed_fields: set[str] = set()
+        for transform in recipe.transforms:
+            if transform.field not in allowed_values or _is_empty(allowed_values[transform.field]):
+                continue
+            allowed_values[transform.field] = transform_value(
+                allowed_values[transform.field],
+                transform,
+                registry=self.transformers,
+            )
+            transformed_fields.add(transform.field)
+
         rendered: dict[str, str] = {}
         lines: list[str] = []
         for field in recipe.fields:
-            value = record.data.get(field.source)
+            value = allowed_values.get(field.source)
             if _is_empty(value):
                 if field.required:
                     raise RecipeValidationError(
@@ -104,7 +124,7 @@ class KnowledgeRenderer:
             "recipe": recipe.name,
         }
         for mapping in recipe.metadata:
-            value = record.data.get(mapping.source)
+            value = allowed_values.get(mapping.source)
             if _is_empty(value):
                 if mapping.required:
                     raise RecipeValidationError(
@@ -113,17 +133,18 @@ class KnowledgeRenderer:
                 continue
             metadata[mapping.key] = _metadata_value(value)
 
+        safe_key = {field: allowed_values[field] for field in recipe.key_fields}
         citation = Citation(
             source_type=record.source_type,
             entity_set=record.entity_set,
-            key=record.key,
-            source_url=source_url,
+            key=safe_key,
+            source_url=None if transformed_fields.intersection(recipe.key_fields) else source_url,
             etag=record.etag,
         )
         return KnowledgeDocument(
             id=document_id_for(
                 record.entity_set,
-                record.key,
+                safe_key,
                 source_type=record.source_type,
             ),
             recipe=recipe.name,
