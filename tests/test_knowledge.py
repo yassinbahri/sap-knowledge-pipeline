@@ -221,3 +221,72 @@ def test_recipe_rejects_duplicate_or_unapproved_transform_fields() -> None:
             assert message in str(exc)
         else:
             raise AssertionError("unsafe transform configuration should be rejected")
+
+
+def test_renderer_prevents_transformed_values_from_leaking() -> None:
+    raw_values = {
+        "ID": "customer-9001",
+        "Name": "Confidential Customer",
+        "Description": "Account under review",
+        "CompanyCode": "9001",
+    }
+    secured_recipe = recipe().model_copy(
+        update={
+            "transforms": (
+                HashTransform(field="ID"),
+                HashTransform(field="Name"),
+                HashTransform(field="Description"),
+                ValueMapTransform(field="CompanyCode", values={"9001": "restricted"}),
+            )
+        }
+    )
+    record = SourceRecord(
+        entity_set="Products",
+        key={"ID": raw_values["ID"]},
+        data=raw_values,
+    )
+
+    document = KnowledgeRenderer().render(
+        record,
+        secured_recipe,
+        source_url="https://sap.example.test/Products('customer-9001')",
+    )
+    serialized = document.model_dump_json()
+
+    assert document.metadata["sap_company_code"] == "restricted"
+    assert document.citation.source_url is None
+    assert document.citation.key["ID"].startswith("sha256:")
+    assert document.id == document_id_for("Products", document.citation.key)
+    for raw_value in raw_values.values():
+        assert raw_value not in serialized
+
+
+def test_custom_transform_runs_once_and_is_reused_across_outputs() -> None:
+    calls: list[object] = []
+
+    def classify(value: object, *, field: str, options: object) -> str:
+        calls.append(value)
+        return "classified"
+
+    recipe_data = recipe().model_dump()
+    recipe_data["transforms"] = [
+        {
+            "kind": "custom",
+            "field": "CompanyCode",
+            "name": "company.classify",
+        }
+    ]
+    secured_recipe = KnowledgeRecipe.model_validate(recipe_data)
+    record = SourceRecord(
+        entity_set="Products",
+        key={"ID": "1"},
+        data={"Name": "Pump", "CompanyCode": "secret-company"},
+    )
+
+    document = KnowledgeRenderer(
+        transformers={"company.classify": classify}
+    ).render(record, secured_recipe)
+
+    assert calls == ["secret-company"]
+    assert document.metadata["sap_company_code"] == "classified"
+    assert "secret-company" not in document.model_dump_json()
