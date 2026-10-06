@@ -66,9 +66,9 @@ class KnowledgeRecipe(BaseModel):
         transform_fields = [transform.field for transform in self.transforms]
         if len(transform_fields) != len(set(transform_fields)):
             raise ValueError("recipe transform fields must be unique")
-        allowed_fields = set(self.key_fields) | set(sources) | {
-            mapping.source for mapping in self.metadata
-        }
+        allowed_fields = (
+            set(self.key_fields) | set(sources) | {mapping.source for mapping in self.metadata}
+        )
         unknown_transforms = set(transform_fields) - allowed_fields
         if unknown_transforms:
             names = ", ".join(sorted(unknown_transforms))

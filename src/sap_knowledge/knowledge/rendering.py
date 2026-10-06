@@ -81,10 +81,7 @@ class KnowledgeRenderer:
             missing = ", ".join(missing_keys)
             raise RecipeValidationError(f"record is missing recipe key fields: {missing}")
 
-        allowed_values = {
-            field: record.data.get(field)
-            for field in recipe.select_fields
-        }
+        allowed_values = {field: record.data.get(field) for field in recipe.select_fields}
         allowed_values.update(record.key)
         transformed_fields: set[str] = set()
         for transform in recipe.transforms:
