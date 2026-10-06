@@ -88,9 +88,7 @@ def _mapped(value: Any, transform: ValueMapTransform) -> Any:
         return transform.values[key]
     if transform.on_missing == "redact":
         return transform.redacted_value
-    raise RecipeValidationError(
-        f"value map has no entry for field {transform.field!r}"
-    ) from None
+    raise RecipeValidationError(f"value map has no entry for field {transform.field!r}") from None
 
 
 def _custom(

@@ -106,9 +106,7 @@ def normalize_cost_center(
     return str(value).strip().zfill(width)
 
 
-renderer = KnowledgeRenderer(
-    transformers={"company.normalize_cost_center": normalize_cost_center}
-)
+renderer = KnowledgeRenderer(transformers={"company.normalize_cost_center": normalize_cost_center})
 
 transform = CustomTransform(
     field="CostCenter",

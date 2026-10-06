@@ -283,9 +283,9 @@ def test_custom_transform_runs_once_and_is_reused_across_outputs() -> None:
         data={"Name": "Pump", "CompanyCode": "secret-company"},
     )
 
-    document = KnowledgeRenderer(
-        transformers={"company.classify": classify}
-    ).render(record, secured_recipe)
+    document = KnowledgeRenderer(transformers={"company.classify": classify}).render(
+        record, secured_recipe
+    )
 
     assert calls == ["secret-company"]
     assert document.metadata["sap_company_code"] == "classified"

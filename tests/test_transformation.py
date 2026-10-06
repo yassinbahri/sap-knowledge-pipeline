@@ -16,21 +16,25 @@ from sap_knowledge.knowledge.transforms import (
 
 
 def test_builtin_transforms_are_deterministic() -> None:
-    assert transform_value(
-        "DE89370400440532013000",
-        MaskTransform(field="IBAN", visible_prefix=2, visible_suffix=4),
-        registry={},
-    ) == "DE****************3000"
-    assert transform_value(
-        {"b": 2, "a": 1}, HashTransform(field="Account"), registry={}
-    ) == transform_value(
-        {"a": 1, "b": 2}, HashTransform(field="Account"), registry={}
+    assert (
+        transform_value(
+            "DE89370400440532013000",
+            MaskTransform(field="IBAN", visible_prefix=2, visible_suffix=4),
+            registry={},
+        )
+        == "DE****************3000"
     )
     assert transform_value(
-        datetime(2026, 10, 6, 12, 30, tzinfo=UTC),
-        DateTransform(field="ChangedAt", output="datetime"),
-        registry={},
-    ) == "2026-10-06T12:30:00Z"
+        {"b": 2, "a": 1}, HashTransform(field="Account"), registry={}
+    ) == transform_value({"a": 1, "b": 2}, HashTransform(field="Account"), registry={})
+    assert (
+        transform_value(
+            datetime(2026, 10, 6, 12, 30, tzinfo=UTC),
+            DateTransform(field="ChangedAt", output="datetime"),
+            registry={},
+        )
+        == "2026-10-06T12:30:00Z"
+    )
     assert (
         transform_value(
             True,
