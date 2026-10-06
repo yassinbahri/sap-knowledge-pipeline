@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from sap_knowledge.knowledge.transforms import FieldTransform
+
 _RESERVED_METADATA_KEYS = frozenset({"chunk_id", "document_id", "ordinal", "text", "citation"})
 
 
@@ -39,6 +41,7 @@ class KnowledgeRecipe(BaseModel):
     title_fields: tuple[str, ...] = Field(min_length=1)
     fields: tuple[FieldMapping, ...] = Field(min_length=1)
     metadata: tuple[MetadataMapping, ...] = ()
+    transforms: tuple[FieldTransform, ...] = ()
     document_type: str = Field(default="sap_entity", min_length=1)
 
     @model_validator(mode="after")
@@ -59,6 +62,17 @@ class KnowledgeRecipe(BaseModel):
         if reserved:
             names = ", ".join(sorted(reserved))
             raise ValueError(f"recipe metadata uses reserved keys: {names}")
+
+        transform_fields = [transform.field for transform in self.transforms]
+        if len(transform_fields) != len(set(transform_fields)):
+            raise ValueError("recipe transform fields must be unique")
+        allowed_fields = set(self.key_fields) | set(sources) | {
+            mapping.source for mapping in self.metadata
+        }
+        unknown_transforms = set(transform_fields) - allowed_fields
+        if unknown_transforms:
+            names = ", ".join(sorted(unknown_transforms))
+            raise ValueError(f"transforms must reference explicitly allowed fields: {names}")
         return self
 
     @property
