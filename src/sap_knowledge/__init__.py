@@ -42,4 +42,4 @@ __all__ = [
     "document_id_for",
 ]
 
-__version__ = "0.1.0a2"
+__version__ = "0.1.0a4"
