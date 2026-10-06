@@ -6,6 +6,19 @@ still evolving.
 
 ## [Unreleased]
 
+### Added
+
+- Validated, serializable recipe transformations for masking, SHA-256 hashing,
+  date normalization, and explicit value mapping.
+- A documented protocol and registry for trusted custom field transformers.
+
+### Security
+
+- Transformed values are reused consistently in document text, retrieval
+  metadata, citations, and deterministic identifiers.
+- Citation source URLs are omitted when transformations are active because a
+  generic renderer cannot safely redact source-specific URL structures.
+
 ## [0.1.0a3] - 2026-09-04
 
 ### Added
