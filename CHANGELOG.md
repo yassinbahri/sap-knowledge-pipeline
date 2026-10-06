@@ -6,6 +6,8 @@ still evolving.
 
 ## [Unreleased]
 
+## [0.1.0a4] - 2026-10-06
+
 ### Added
 
 - Validated, serializable recipe transformations for masking, SHA-256 hashing,
@@ -64,6 +66,8 @@ still evolving.
 - HANA snapshot conversion into the portable knowledge-event format.
 - Python 3.11 through 3.14 support and a fully offline automated test suite.
 
-[Unreleased]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a2...HEAD
+[Unreleased]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a4...HEAD
+[0.1.0a4]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a3...v0.1.0a4
+[0.1.0a3]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a2...v0.1.0a3
 [0.1.0a2]: https://github.com/yassinbahri/sap-knowledge-pipeline/compare/v0.1.0a1...v0.1.0a2
-[0.1.0a1]: https://github.com/yassinbahri/sap-knowledge-pipeline/releases/tag/0.1.0a1
+[0.1.0a1]: https://github.com/yassinbahri/sap-knowledge-pipeline/releases/tag/v0.1.0a1
