@@ -207,6 +207,36 @@ Every chunk includes:
 Stable IDs let a later sink upsert changed chunks without duplicating them.
 The structured citation lets a RAG application show where an answer came from.
 
+### Transform approved fields before RAG
+
+An allow-listed field can still contain a value that should not reach an
+embedding or vector payload. Recipes can declare deterministic masks, SHA-256
+digests, date normalization, and closed value mappings:
+
+```python
+from sap_knowledge import HashTransform, MaskTransform
+
+secured_recipe = BUSINESS_PARTNER.model_copy(
+    update={
+        "transforms": (
+            HashTransform(field="BusinessPartner"),
+            MaskTransform(
+                field="BusinessPartnerFullName",
+                visible_prefix=1,
+            ),
+        )
+    }
+)
+
+document = KnowledgeRenderer().render(record, secured_recipe)
+```
+
+The transformed value is reused across text, metadata, citations, and stable
+identifiers so the raw value does not escape through a second output path.
+Custom hooks are supported for trusted application code. See
+[Field transformations and redaction](docs/field-transformations.md) for the
+complete security model and API.
+
 ## SAP HANA to RAG chunks
 
 Install the optional SAP HANA driver:
