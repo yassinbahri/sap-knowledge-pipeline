@@ -38,9 +38,9 @@ dependencies = [
 [project.optional-dependencies]
 hana = ["hdbcli>=2.24,<3"]
 qdrant = ["qdrant-client>=1.18,<2"]
-fastembed = ["fastembed>=0.8,<0.9", "qdrant-client>=1.18,<2"]
+fastembed = ["fastembed>=0.8,<0.10", "qdrant-client>=1.18,<2"]
 all = [
-  "fastembed>=0.8,<0.9",
+  "fastembed>=0.8,<0.10",
   "hdbcli>=2.24,<3",
   "qdrant-client>=1.18,<2",
 ]
