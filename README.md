@@ -92,6 +92,10 @@ and deletion tracking remain future work.
 - Qdrant local mode is intended for development and smaller indexes.
 - No LLM is called automatically. Applications decide where retrieved context
   is sent.
+## Synthetic finance recipe
+
+See the [synthetic finance recipe example](docs/synthetic-finance-recipe.md) for a fictional finance posting with an explicit field allow-list, citation metadata, and guidance on protecting sensitive financial information.
+
 
 ## Development setup
 
